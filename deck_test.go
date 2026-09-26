@@ -427,12 +427,21 @@ func TestStreamsHideSkipButtons(t *testing.T) {
 	}
 }
 
-func TestBrailleBarsStackFourRows(t *testing.T) {
-	cells, _ := brailleBars([]float64{1, 0.5, 0, 0.25}, nil, 2)
-	got := string(cells)
-	// top row full, second half, third empty, bottom a quarter (one dot)
-	if got != "⡛⠉" {
-		t.Fatalf("got %q", got)
+// The meter is four solid bars: lit cells in the range's colour, a bright
+// peak cell trailing a falling bar, and a faint track beyond.
+func TestMeterCells(t *testing.T) {
+	m := testModel(t)
+	th := m.themeOrDefault()
+	m.levels[0], m.levelPeak[0] = 0.5, 0.75
+	lows := th.Gradient(rampStops...).At(0)
+	if got := m.meterCell(0, 0, 8); got != lows {
+		t.Errorf("lit cell %v, want %v", got, lows)
+	}
+	if got := m.meterCell(0, 5, 8); got != th.Bright {
+		t.Errorf("peak cell %v, want %v", got, th.Bright)
+	}
+	if got := m.meterCell(0, 7, 8); got == lows || got == th.Bright {
+		t.Errorf("track cell %v is lit", got)
 	}
 }
 

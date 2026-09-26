@@ -7,6 +7,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/demian0311/cliamp-deck/fx"
 )
 
 func (m model) View() tea.View {
@@ -183,42 +185,60 @@ func (m model) drawPlayer(g *grid, r rect) {
 	}
 }
 
-// drawMeter is a braille meter two text rows high with a bar per dot row:
-// highs on top, lows at the bottom (see updateLevels), coloured by how far
-// each cell reaches, with white peak dots trailing back to the bars.
+// drawMeter is two text rows of solid half-block bars, one bar per half row:
+// highs on top, lows at the bottom (see updateLevels). Each range has its own
+// colour along rampStops; unlit cells keep a faint track in that colour, and
+// a peak cell in the theme's bright foreground trails back to the bar.
 func (m model) drawMeter(g *grid, x, y, w int) {
-	for row := range meterRanges / 4 {
-		fills, peaks := make([]float64, 4), make([]float64, 4)
-		for d := range 4 {
-			r := meterRanges - 1 - row*4 - d
-			fills[d], peaks[d] = m.levels[r], m.levelPeak[r]
-		}
-		cells, peakOnly := brailleBars(fills, peaks, w)
-		for i, ch := range cells {
-			switch {
-			case ch == 0x2800:
-				g.set(x+i, y+row, '⣀', cDim)
-			case peakOnly[i]:
-				g.set(x+i, y+row, ch, cWhite)
-			default:
-				m.setRamp(g, x+i, y+row, ch, float64(i)/float64(max(1, w-1)))
-			}
+	for row := range meterRanges / 2 {
+		top, bot := meterRanges-1-row*2, meterRanges-2-row*2
+		for i := range w {
+			g.setPx(x+i, y+row, m.meterCell(top, i, w), m.meterCell(bot, i, w))
 		}
 	}
 }
 
-// drawVolume is the volume as a braille bar in the meter's style and colours,
-// full height, across -30..+6 dB.
-func (m model) drawVolume(g *grid, x, y, w int, db float64) {
-	f := clamp01((db + 30) / 36)
-	cells, _ := brailleBars([]float64{f, f, f, f}, nil, w)
-	for i, ch := range cells {
-		if ch == 0x2800 {
-			g.set(x+i, y, '⣀', cDim)
-			continue
-		}
-		m.setRamp(g, x+i, y, ch, float64(i)/float64(max(1, w-1)))
+// meterCell is the colour of range r's bar at column i of w.
+func (m model) meterCell(r, i, w int) fx.RGB {
+	th := m.themeOrDefault()
+	col := th.Gradient(rampStops...).At(float64(r) / float64(meterRanges-1))
+	lit := int(math.Round(m.levels[r] * float64(w)))
+	switch {
+	case i < lit:
+		return col
+	case i == int(math.Round(m.levelPeak[r]*float64(w)))-1:
+		return th.Bright
 	}
+	return mixRGB(th.Background, col, 0.18)
+}
+
+// drawVolume is the volume as a solid half-row bar like the meter's, coloured along
+// rampStops by position, across -30..+6 dB.
+func (m model) drawVolume(g *grid, x, y, w int, db float64) {
+	th := m.themeOrDefault()
+	ramp := th.Gradient(rampStops...)
+	lit := int(math.Round(clamp01((db+30)/36) * float64(w)))
+	for i := range w {
+		c := ramp.At(float64(i) / float64(max(1, w-1)))
+		if i >= lit {
+			c = mixRGB(th.Background, c, 0.18)
+		}
+		g.setPx(x+i, y, c, th.Background) // one half row thick, like a meter bar
+	}
+}
+
+// themeOrDefault is the loaded theme, or the built-in fallback colours.
+func (m model) themeOrDefault() *fx.Theme {
+	if m.theme != nil {
+		return m.theme
+	}
+	th, _ := fx.LoadTheme("")
+	return th
+}
+
+func mixRGB(a, b fx.RGB, t float64) fx.RGB {
+	at := func(p, q uint8) uint8 { return uint8(float64(p) + (float64(q)-float64(p))*t) }
+	return fx.RGB{R: at(a.R, b.R), G: at(a.G, b.G), B: at(a.B, b.B)}
 }
 
 // rampStops are the theme colours the meter, volume and EQ run through.
