@@ -308,7 +308,20 @@ func TestSplitStation(t *testing.T) {
 		"REYFM - #original [192k]":     {"REYFM - #original", "192k", ""},
 		"RFE/RL Radio Farda · Czechia": {"RFE/RL Radio Farda", "", "Czechia"},
 		"Classic FM UK [128k] · United Kingdom Of Great Britain And Northern Ireland": {"Classic FM UK", "128k", "United Kingdom"},
-		"Iran International": {"Iran International", "", ""},
+		"Iran International":                            {"Iran International", "", ""},
+		"SomaFM Groove Salad (128k MP3)":                {"SomaFM Groove Salad", "", ""},
+		"TranceBase.FM - AAC HD 256k":                   {"TranceBase.FM", "", ""},
+		"Radio Paradise Main Mix (EU) 320k AAC [320k]":  {"Radio Paradise Main Mix (EU)", "320k", ""},
+		"Hit FM (UKraine) - 128kb/s":                    {"Hit FM (UKraine)", "", ""},
+		"DiscoverTranceRadio (MP3 HQ stereo 192kBit/s)": {"DiscoverTranceRadio", "", ""},
+		"Deutschlandfunk | DLF | MP3 128k":              {"Deutschlandfunk | DLF", "", ""},
+		"Classic Vinyl HD Opus":                         {"Classic Vinyl HD", "", ""},
+		"Classic Vinyl HD":                              {"Classic Vinyl HD", "", ""},
+		"90s90s Dance HQ":                               {"90s90s Dance HQ", "", ""},
+		"Polskie Radio - Czwórka (Program 4) (AAC+)":    {"Polskie Radio - Czwórka (Program 4)", "", ""},
+		"98.1 KBEAR":                                    {"98.1 KBEAR", "", ""},
+		"---Tarateel---":                                {"---Tarateel---", "", ""},
+		"MP3":                                           {"MP3", "", ""},
 	} {
 		n, b, c := splitStation(in)
 		if [3]string{n, b, c} != want {

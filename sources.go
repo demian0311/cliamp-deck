@@ -268,7 +268,62 @@ func splitStation(s string) (name, bitrate, country string) {
 	if m := bitrateSuffix.FindStringSubmatchIndex(name); m != nil {
 		name, bitrate = name[:m[0]], name[m[2]:m[3]]
 	}
-	return strings.TrimSpace(name), bitrate, country
+	return stripFormat(strings.TrimSpace(name)), bitrate, country
+}
+
+var (
+	bitrateWord = regexp.MustCompile(`(?i)^\d+\s?k(b|bps|bit)?(/s)?$`)
+	codecWord   = map[string]bool{"aac": true, "aac+": true, "he-aac": true, "mp3": true, "opus": true, "ogg": true, "flac": true, "vorbis": true}
+	qualityWord = map[string]bool{"hd": true, "hq": true, "stereo": true, "mono": true}
+	bracketed   = regexp.MustCompile(`\s*[(\[]([^()\[\]]*)[)\]]`)
+)
+
+// formatWords reports whether words describe only the stream's encoding
+// ("128k MP3", "AAC HD 256k"): all bitrate, codec or quality words, with at
+// least one bitrate or codec so a bare "HD" in a station's name survives.
+func formatWords(words []string) bool {
+	real := false
+	for _, w := range words {
+		lw := strings.ToLower(w)
+		switch {
+		case bitrateWord.MatchString(w) || codecWord[lw]:
+			real = true
+		case !qualityWord[lw]:
+			return false
+		}
+	}
+	return real
+}
+
+// stripFormat drops the encoding some stations put in their name, since the
+// bitrate has its own column: bracketed groups like "(128k MP3)" and a
+// trailing run like "- AAC HD 256k". A quality word opening the trailing run
+// stays, so "Classic Vinyl HD Opus" keeps the HD that tells it apart.
+func stripFormat(name string) string {
+	out := bracketed.ReplaceAllStringFunc(name, func(g string) string {
+		if formatWords(strings.Fields(bracketed.FindStringSubmatch(g)[1])) {
+			return ""
+		}
+		return g
+	})
+	words := strings.Fields(out)
+	i := len(words)
+	for i > 0 && (formatWords(words[i-1:i]) || qualityWord[strings.ToLower(words[i-1])]) {
+		i--
+	}
+	if !formatWords(words[i:]) {
+		i = len(words)
+	}
+	for i < len(words) && qualityWord[strings.ToLower(words[i])] {
+		i++
+	}
+	if i < len(words) {
+		out = strings.TrimRight(strings.Join(words[:i], " "), " -|,:·")
+	}
+	if out = strings.TrimSpace(out); out == "" {
+		return name
+	}
+	return out
 }
 
 func trackRow(t ipc.TrackInfo, right string) row {
