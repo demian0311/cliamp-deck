@@ -43,11 +43,14 @@ func blend(f *Frame, x, y int, c RGB, k float64) {
 }
 
 // Ridges: stacked waveform lines scrolling back into the dark, like the
-// Unknown Pleasures sleeve. Each ridge is a moment of the spectrum, so the
-// song's shape stays readable a couple of seconds back.
+// Unknown Pleasures sleeve, drawn in braille dots (a GlyphEffect: 2×4 dots a
+// cell). Each ridge is a moment of the spectrum, so the song's shape stays
+// readable a couple of seconds back.
 type Ridges struct {
-	lines [][]float64
+	lines [][]float64 // profiles per dot column, newest first
 	since float64
+	dots  []int8 // ridge index owning each dot, -1 for none
+	cells Cells  // Render's pixel fallback draws through this
 }
 
 const (
@@ -57,61 +60,96 @@ const (
 
 func (*Ridges) Name() string { return "ridges" }
 
-func (e *Ridges) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
-	if len(e.lines) > 0 && len(e.lines[0]) != f.W {
+func (e *Ridges) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
+	W, H := c.W*2, c.H*4 // dot resolution
+	if W == 0 || H == 0 {
+		return
+	}
+	if len(e.lines) > 0 && len(e.lines[0]) != W {
 		e.lines = nil
 	}
 	if e.since += dt; e.since >= ridgeEvery || len(e.lines) == 0 {
 		e.since = 0
-		prof := make([]float64, f.W)
+		prof := make([]float64, W)
 		seed := rand.Float64() * 100 // each ridge gets its own jagged skyline
 		for x := range prof {
 			b := a.Bass
 			if n := len(a.Bands); n > 1 { // interpolate so the profile has no band steps
-				pos := float64(x) / float64(max(1, f.W-1)) * float64(n-1)
+				pos := float64(x) / float64(max(1, W-1)) * float64(n-1)
 				i := min(int(pos), n-2)
 				b = clamp01(a.Bands[i] + (a.Bands[i+1]-a.Bands[i])*(pos-float64(i)))
 			}
-			d := (float64(x) - float64(f.W)/2) / (float64(f.W) * 0.2)
-			centre := math.Exp(-d * d)
-			u := float64(x) * 96 / float64(max(1, f.W)) // noise in deck-preview units
-			jag := 0.5 + 0.3*math.Sin(u*0.9+seed) + 0.2*math.Sin(u*2.3+seed*1.7)
-			prof[x] = centre * (0.3 + b) * (0.4 + jag)
+			d := (float64(x) - float64(W)/2) / (float64(W) * 0.2)
+			u := float64(x) * 192 / float64(W) // noise in fixed units, whatever the width
+			jag := 0.5 + 0.3*math.Sin(u*0.45+seed) + 0.2*math.Sin(u*1.15+seed*1.7)
+			prof[x] = math.Exp(-d*d) * (0.3 + b) * (0.4 + jag)
 		}
 		e.lines = append([][]float64{prof}, e.lines...)
 		if len(e.lines) > ridgeCount {
 			e.lines = e.lines[:ridgeCount]
 		}
 	}
-	bg, fg := th.Background, th.Color("foreground")
-	for i := range f.Px {
-		f.Px[i] = bg
+	if len(e.dots) != W*H {
+		e.dots = make([]int8, W*H)
 	}
-	top := float64(f.H) * 0.22
-	spacing := (float64(f.H) - top - 2) / ridgeCount
-	amp := float64(f.H) * 0.19
-	for k := len(e.lines) - 1; k >= 0; k-- {
+	for i := range e.dots {
+		e.dots[i] = -1
+	}
+	top := float64(H) * 0.22
+	spacing := (float64(H) - top - 2) / ridgeCount
+	amp := float64(H) * 0.19
+	for k := len(e.lines) - 1; k >= 0; k-- { // back to front, each hiding what is behind it
 		base := top + float64(ridgeCount-1-k)*spacing
-		col := lerp(fg, bg, float64(k)/(ridgeCount+2))
-		if k == 0 {
-			col = lerp(fg, th.Color("cyan"), 0.35)
-		}
 		prev := 0
-		for x := range f.W {
+		for x := range W {
 			y := int(math.Round(base - e.lines[k][x]*amp))
-			for yy := max(0, y+1); yy < min(f.H, int(base)+3); yy++ { // hide the ridges behind
-				f.Px[yy*f.W+x] = bg
+			for yy := max(0, y+1); yy < min(H, int(base)+4); yy++ {
+				e.dots[yy*W+x] = -1
 			}
 			lo, hi := y, y // join to the previous column so the ridge is one line
 			if x > 0 {
 				lo, hi = min(y, (y+prev)/2), max(y, (y+prev)/2)
 			}
-			for yy := max(0, lo); yy <= min(f.H-1, hi); yy++ {
-				f.Px[yy*f.W+x] = col
+			for yy := max(0, lo); yy <= min(H-1, hi); yy++ {
+				e.dots[yy*W+x] = int8(k)
 			}
 			prev = y
 		}
 	}
+	fg, bg, cyan := th.Color("foreground"), th.Background, th.Color("cyan")
+	bits := [4][2]rune{{0x01, 0x08}, {0x02, 0x10}, {0x04, 0x20}, {0x40, 0x80}}
+	for cy := range c.H {
+		for cx := range c.W {
+			var ch rune
+			front := int8(ridgeCount)
+			for r := range 4 {
+				for s := range 2 {
+					if k := e.dots[(cy*4+r)*W+cx*2+s]; k >= 0 {
+						ch |= bits[r][s]
+						front = min(front, k)
+					}
+				}
+			}
+			i := cy*c.W + cx
+			if ch == 0 {
+				c.Ch[i] = 0
+				continue
+			}
+			col := lerp(fg, bg, float64(front)/(ridgeCount+2))
+			if front == 0 {
+				col = lerp(fg, cyan, 0.35)
+			}
+			c.Ch[i], c.Fg[i] = 0x2800+ch, col
+		}
+	}
+}
+
+// Render draws the ridges as pixels, lit where a cell has dots in that half,
+// for anything that cannot show glyphs.
+func (e *Ridges) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
+	e.cells.Resize(f.W, f.H/2)
+	e.RenderCells(&e.cells, a, t, dt, th)
+	cellsToPixels(f, &e.cells, th.Background)
 }
 
 // Aurora: slow curtains of light over a still sky. Brightness follows the
@@ -310,42 +348,55 @@ func (e *Scope) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 }
 
 // Rain: falling columns of glyphs, green with cyan and white leading edges.
-// Speed follows the energy; each beat starts new streams and flashes the
-// lead glyphs. It draws text cells (GlyphEffect).
+// Each column follows one of cliamp's bands, laid out low to high across the
+// screen: a loud band rains fast, long and bright, a quiet one thins and goes
+// dry. A beat surges every stream and restarts the loudest columns, flashing
+// their lead glyphs. It draws text cells (GlyphEffect).
 type Rain struct {
 	drops []drop
 	glyph []rune
 	prev  float64
-	cells Cells // Render's pixel fallback draws through this
+	surge float64 // extra speed from the last beat, decaying
+	cells Cells   // Render's pixel fallback draws through this
 }
 
 type drop struct {
-	y, v float64
-	n    int
+	y, v, n float64 // head row, base speed, trail length
 }
 
-var rainGlyphs = []rune("01ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉ0123456789ABCDEF<>:;=+*")
+// rainGlyphs stay within what common coding fonts carry: half-width katakana
+// rendered as missing-glyph boxes in JetBrains Mono.
+var rainGlyphs = []rune("0123456789ABCDEFXZ<>:;=+*#%$&@?!/\\|{}[]~^")
 
 func (*Rain) Name() string { return "rain" }
 
 func (e *Rain) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
+	if c.W == 0 || c.H == 0 {
+		return
+	}
 	if len(e.drops) != c.W || len(e.glyph) != c.W*c.H {
 		e.drops = make([]drop, c.W)
 		for i := range e.drops {
-			e.drops[i] = drop{-rand.Float64() * float64(c.H) * 2, 4 + rand.Float64()*6, 6 + rand.IntN(12)}
+			e.drops[i] = drop{-rand.Float64() * float64(c.H), 3 + rand.Float64()*3, 6}
 		}
 		e.glyph = make([]rune, c.W*c.H)
 		for i := range e.glyph {
 			e.glyph[i] = rainGlyphs[rand.IntN(len(rainGlyphs))]
 		}
 	}
-	if c.W == 0 || c.H == 0 {
-		return
+	level := func(x int) float64 { // this column's band
+		if n := len(a.Bands); n > 0 {
+			return clamp01(a.Bands[min(n-1, x*n/c.W)])
+		}
+		return a.Mid
 	}
+	e.surge *= math.Exp(-dt * 4)
 	if onset(a, &e.prev) {
-		for range 3 + int(a.Bass*6) {
-			if d := &e.drops[rand.IntN(c.W)]; d.y > float64(c.H) {
-				d.y = -1
+		e.surge += 10 * a.Beat
+		for range 4 + int(a.Bass*10) { // restart loud columns that have run dry
+			x := rand.IntN(c.W)
+			if d := &e.drops[x]; level(x) > 0.4 && d.y-d.n > float64(c.H)*0.5 {
+				d.y = -rand.Float64() * 3
 			}
 		}
 	}
@@ -357,12 +408,14 @@ func (e *Rain) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 	}
 	deep, green, cyan, fg := th.Color("darker_background"), th.Color("green"), th.Color("cyan"), th.Color("foreground")
 	for x := range e.drops {
-		d := &e.drops[x]
-		d.y += d.v * (0.35 + (a.Bass+a.Mid)*0.8) * dt
-		if d.y-float64(d.n) > float64(c.H) && rand.Float64() < 0.02 {
-			d.y, d.n = -rand.Float64()*6, 6+rand.IntN(12)
+		d, lvl := &e.drops[x], level(x)
+		d.y += (d.v*(0.15+lvl*1.6) + e.surge) * dt
+		d.n += (3 + lvl*16 - d.n) * math.Min(1, dt*3)
+		if d.y-d.n > float64(c.H) && rand.Float64() < lvl*lvl*3*dt { // quiet bands stay dry
+			d.y, d.v = -rand.Float64()*4, 3+rand.Float64()*3
 		}
-		for k := range d.n {
+		n := int(d.n)
+		for k := range n {
 			y := int(math.Floor(d.y)) - k
 			if y < 0 || y >= c.H {
 				continue
@@ -371,9 +424,9 @@ func (e *Rain) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 			if k < 3 {
 				tail = cyan
 			}
-			col := lerp(deep, tail, (1-float64(k)/float64(d.n))*0.95)
+			col := lerp(deep, tail, (1-float64(k)/float64(n))*(0.35+0.6*lvl))
 			if k == 0 {
-				col = lerp(fg, th.Bright, a.Beat)
+				col = lerp(lerp(deep, fg, 0.5+0.5*lvl), th.Bright, a.Beat)
 			}
 			c.Ch[y*c.W+x], c.Fg[y*c.W+x] = e.glyph[y*c.W+x], col
 		}
@@ -385,12 +438,16 @@ func (e *Rain) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 func (e *Rain) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	e.cells.Resize(f.W, f.H/2)
 	e.RenderCells(&e.cells, a, t, dt, th)
-	deep := th.Color("darker_background")
+	cellsToPixels(f, &e.cells, th.Color("darker_background"))
+}
+
+// cellsToPixels paints each lit cell's colour into both of its pixels.
+func cellsToPixels(f *Frame, c *Cells, bg RGB) {
 	for y := range f.H {
 		for x := range f.W {
-			f.Px[y*f.W+x] = deep
-			if cy := y / 2; cy < e.cells.H && e.cells.Ch[cy*f.W+x] != 0 {
-				f.Px[y*f.W+x] = e.cells.Fg[cy*f.W+x]
+			f.Px[y*f.W+x] = bg
+			if cy := y / 2; cy < c.H && c.Ch[cy*c.W+x] != 0 {
+				f.Px[y*f.W+x] = c.Fg[cy*c.W+x]
 			}
 		}
 	}
