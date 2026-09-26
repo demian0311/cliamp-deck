@@ -25,7 +25,7 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
 
 ## Focus, keys, mouse
 - Tab / Shift-Tab cycles focus: player → visualizer → sources. The focused frame is highlighted.
-- Sources: tabs `sources | queue | history` (`[` `]` or click a tab). `↑↓`/wheel move; Enter plays now (replaces
+- Sources: tabs `sources | queue | history` (`[` `]` or click a tab). `↑↓`/wheel move (skipping headers); `{ }`/shift+↑↓ jump a group — radio catalog stations group by country, bitrate in the dim right column; Enter plays now (replaces
   queue; `track.play`); `a` append to the end of the live playlist (`queue`, by path); `A` play next
   (`track.queue` for a supplied track, `queue.enqueue` for one already in the live playlist). Checked against
   `cliamp remote capabilities` on v2.0.1, 2026-09-26.

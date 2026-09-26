@@ -319,11 +319,19 @@ func (m model) drawSources(g *grid, r rect) {
 		case it.kind == rowHeader:
 			line := []rune("── " + it.label + " " + strings.Repeat("─", max(0, rows.w)))
 			g.put(rows.x+1, y, string(line[:max(0, min(len(line), rows.w-2))]), cDim)
+			if it.color != cNone {
+				g.paint(rows.x+4, y, min(len([]rune(it.label)), max(0, rows.w-5)), it.color)
+			}
+			if n := len([]rune(it.right)); it.right != "" && n+6 < rows.w-len([]rune(it.label))-5 {
+				g.put(rows.x+rows.w-n-3, y, " "+it.right+" ", cDim)
+			}
 			continue
 		case it.kind == rowSetup:
 			c = cDim
 		case it.current:
 			mark, c = "► ", cGreen
+		default:
+			c = it.color
 		}
 		right := it.right
 		if len([]rune(right)) > rows.w/3 {
@@ -383,6 +391,9 @@ func (m model) hints() [][2]string {
 		return [][2]string{{"←→", "band"}, {"↑↓", "gain"}, {"p", "preset"}, {"e", "close"}}
 	case m.focus == focusSources:
 		keys := [][2]string{{"↑↓", "move"}, {"⏎", "play"}, {"a", "queue"}, {"A", "play next"}, {"[ ]", "tabs"}, {"/", "search"}}
+		if l := m.lists[m.tab]; l.hasGroups() {
+			keys = append(keys[:2:2], append([][2]string{{"{ }", "group"}}, keys[2:]...)...)
+		}
 		if r, ok := m.selected(); ok && r.kind == rowSetup {
 			keys = [][2]string{{"s", "connect"}, {"↑↓", "move"}, {"[ ]", "tabs"}}
 		}

@@ -106,8 +106,14 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 		case "pgup":
 			l.move(-10)
 			return m, nil
+		case "}", "shift+down":
+			l.jumpGroup(1)
+			return m.moreIfAtEnd()
+		case "{", "shift+up":
+			l.jumpGroup(-1)
+			return m, nil
 		case "home":
-			l.sel = 0
+			l.sel = firstSelectable(l.rows)
 			return m, nil
 		case "end":
 			l.move(len(l.rows))

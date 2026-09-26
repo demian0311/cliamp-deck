@@ -301,3 +301,53 @@ func TestTrackTitleDropsARepeatedArtist(t *testing.T) {
 		}
 	}
 }
+
+func TestSplitStation(t *testing.T) {
+	for in, want := range map[string][3]string{
+		"MANGORADIO [128k] · Germany":  {"MANGORADIO", "128k", "Germany"},
+		"REYFM - #original [192k]":     {"REYFM - #original", "192k", ""},
+		"RFE/RL Radio Farda · Czechia": {"RFE/RL Radio Farda", "", "Czechia"},
+		"Classic FM UK [128k] · United Kingdom Of Great Britain And Northern Ireland": {"Classic FM UK", "128k", "United Kingdom"},
+		"Iran International": {"Iran International", "", ""},
+	} {
+		n, b, c := splitStation(in)
+		if [3]string{n, b, c} != want {
+			t.Errorf("%q: got %q %q %q", in, n, b, c)
+		}
+	}
+}
+
+// Catalog stations group under their country in order of each country's most
+// popular station; pinned entries stay on top and stationless countries last.
+func TestRadioCatalogGroupsByCountry(t *testing.T) {
+	m := testModel(t)
+	rows := m.playlistRows("radio", []ipc.PlaylistInfo{
+		{ID: "p:0", Name: "United States (near you)"},
+		{ID: "c:0", Name: "A [128k] · Germany"},
+		{ID: "c:1", Name: "B [64k]"},
+		{ID: "c:2", Name: "C · France"},
+		{ID: "c:3", Name: "D [320k] · Germany"},
+	})
+	var got []string
+	for _, r := range rows {
+		got = append(got, r.label+"|"+r.right)
+	}
+	want := []string{"United States (near you)|", "Germany|2", "A|128k", "D|320k", "France|1", "C|", "elsewhere|1", "B|64k"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("rows:\n got %v\nwant %v", got, want)
+	}
+
+	l := listState{rows: rows}
+	l.move(1) // steps over the Germany header
+	if l.sel != 2 {
+		t.Fatalf("move landed on %d", l.sel)
+	}
+	l.jumpGroup(1)
+	if rows[l.sel].label != "C" {
+		t.Fatalf("next group landed on %q", rows[l.sel].label)
+	}
+	l.jumpGroup(-1)
+	if rows[l.sel].label != "A" {
+		t.Fatalf("previous group landed on %q", rows[l.sel].label)
+	}
+}

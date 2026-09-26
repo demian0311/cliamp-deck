@@ -250,13 +250,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.say(msg.name + ": " + msg.err.Error())
 			return m, nil
 		}
-		sel := 0
-		if msg.keepSel {
-			sel = m.lists[tabSources].sel
+		// A further page regroups the list, so the selection follows its row
+		// rather than its index.
+		selKey := ""
+		if l := m.lists[tabSources]; msg.keepSel && l.sel < len(l.rows) {
+			selKey = l.rows[l.sel].key
 		}
 		m.provider, m.providerName, m.inResults = msg.provider, msg.name, false
 		m.catalog = msg.catalog && msg.added > 0
-		m.lists[tabSources] = listState{rows: m.playlistRows(msg.provider, msg.list), sel: sel}
+		rows := m.playlistRows(msg.provider, msg.list)
+		sel := firstSelectable(rows)
+		for i, r := range rows {
+			if selKey != "" && r.key == selKey {
+				sel = i
+			}
+		}
+		m.lists[tabSources] = listState{rows: rows, sel: sel}
 		m.lists[tabSources].move(0)
 
 	case queueMsg:
