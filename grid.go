@@ -126,14 +126,6 @@ func (g *grid) paint(x, y, n int, c cls) {
 	}
 }
 
-// setPx makes a cell a ▀ half-block pixel pair: top and bottom colours.
-func (g *grid) setPx(x, y int, top, bot fx.RGB) {
-	if x >= 0 && x < g.w && y >= 0 && y < g.h {
-		k := y*g.w + x
-		g.px[k], g.ch[k], g.top[k], g.bot[k] = true, '▀', top, bot
-	}
-}
-
 // setRGB writes a rune in its own 24-bit colour.
 func (g *grid) setRGB(x, y int, r rune, c fx.RGB) {
 	if x >= 0 && x < g.w && y >= 0 && y < g.h {
