@@ -7,6 +7,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/demian0311/cliamp-deck/fx"
 )
 
 func (m model) View() tea.View {
@@ -87,7 +89,7 @@ func (m model) drawVisual(g *grid, l layout) {
 	if l.visBoxed {
 		m.drawFrame(g, l.vis, m.modeName(), cAmber, focusVis)
 		if prev, _ := visControls(l); !prev.empty() {
-			label := fmt.Sprintf("‹ %d/%d ›", m.mode+1, len(m.effects)+1)
+			label := fmt.Sprintf("‹ %d/%d ›", m.mode+1, len(m.effects))
 			g.put(prev.x-1, prev.y, " "+label+" ", cWhite)
 			g.paint(prev.x+2, prev.y, len([]rune(label))-4, cDim)
 		}
@@ -95,8 +97,8 @@ func (m model) drawVisual(g *grid, l layout) {
 	if in.empty() {
 		return
 	}
-	if m.mode == 0 {
-		m.drawSpectrum(g, in)
+	if _, ok := m.effects[m.mode].(fx.GlyphEffect); ok {
+		m.drawCells(g, in)
 		return
 	}
 	if m.frame.W == in.w && m.frame.H == in.h*2 {
@@ -104,23 +106,17 @@ func (m model) drawVisual(g *grid, l layout) {
 	}
 }
 
-func (m model) drawSpectrum(g *grid, r rect) {
-	dots, H := r.w*2, float64(r.h*4)
-	for cx := range r.w {
-		a := int(math.Round(sample(m.hi, cx*2, dots) * H))
-		b := int(math.Round(sample(m.hi, cx*2+1, dots) * H))
-		pa := int(math.Round(sample(m.pk.v, cx*2, dots) * H))
-		pb := int(math.Round(sample(m.pk.v, cx*2+1, dots) * H))
-		for row := range r.h {
-			ch := brailleCell(a, b, pa, pb, row)
-			if ch == 0x2800 {
-				continue
+// drawCells puts a glyph effect's cells on screen, each in its own colour.
+func (m model) drawCells(g *grid, r rect) {
+	c := m.cells
+	if c.W != r.w || c.H != r.h {
+		return
+	}
+	for y := range c.H {
+		for x := range c.W {
+			if ch := c.Ch[y*c.W+x]; ch != 0 {
+				g.setRGB(r.x+x, r.y+y, ch, c.Fg[y*c.W+x])
 			}
-			c := heightClass(float64(row) / float64(r.h))
-			if a <= row*4 && b <= row*4 {
-				c = cWhite // only peak caps in this cell
-			}
-			g.set(r.x+cx, r.y+r.h-1-row, ch, c)
 		}
 	}
 }
@@ -602,17 +598,6 @@ func (m model) modeLine() string {
 		parts = append(parts, fmt.Sprintf("%d/%d", m.snap.Index+1, m.snap.Total))
 	}
 	return strings.Join(parts, " · ")
-}
-
-// sample picks the value for dot column i of n from a higher-resolution curve.
-func sample(v []float64, i, n int) float64 {
-	if len(v) == 0 {
-		return 0
-	}
-	if n <= 1 {
-		return v[0]
-	}
-	return v[i*(len(v)-1)/(n-1)]
 }
 
 func heightClass(frac float64) cls {

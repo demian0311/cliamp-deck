@@ -13,41 +13,6 @@ import (
 	"github.com/bjarneo/cliamp/ipc"
 )
 
-func TestResampleHitsBandCentresAndStaysInRange(t *testing.T) {
-	bands := []float64{0.9, 0.1, 0.8, 0, 1}
-	out := resample(bands, 9) // every second sample lands on a band centre
-	for i, b := range bands {
-		if got := out[i*2]; got < b-1e-9 || got > b+1e-9 {
-			t.Errorf("out[%d] = %v, want band %v", i*2, got, b)
-		}
-	}
-	for i, v := range resample(bands, 200) {
-		if v < 0 || v > 1 {
-			t.Fatalf("out[%d] = %v escapes [0,1]", i, v)
-		}
-	}
-}
-
-func TestBrailleCell(t *testing.T) {
-	cases := []struct {
-		a, b, pa, pb, row int
-		want              rune
-	}{
-		{0, 0, 0, 0, 0, '⠀'},
-		{4, 4, 0, 0, 0, '⣿'},
-		{4, 4, 0, 0, 1, '⠀'}, // bar is one cell tall
-		{1, 0, 0, 0, 0, '⡀'}, // bottom-left dot
-		{2, 4, 0, 0, 0, '⣼'}, // left half-height, right full
-		{0, 0, 3, 0, 0, '⠂'}, // lone peak dot, third from bottom
-		{5, 0, 0, 0, 1, '⡀'}, // fifth dot spills into the next cell
-	}
-	for _, c := range cases {
-		if got := brailleCell(c.a, c.b, c.pa, c.pb, c.row); got != c.want {
-			t.Errorf("brailleCell(%d,%d,%d,%d,%d) = %q, want %q", c.a, c.b, c.pa, c.pb, c.row, got, c.want)
-		}
-	}
-}
-
 func TestLayoutShapes(t *testing.T) {
 	cases := []struct {
 		w, h int
@@ -111,7 +76,7 @@ func TestRenderFitsEverywhere(t *testing.T) {
 	m := testModel(t)
 	bands := specMsg{[]float64{.9, .8, .6, .7, .5, .4, .3, .2, .1, .05}}
 	sizes := [][2]int{{280, 58}, {200, 58}, {100, 58}, {100, 28}, {60, 24}, {50, 20}, {38, 6}, {28, 3}}
-	for mode := 0; mode <= len(m.effects); mode++ {
+	for mode := range len(m.effects) {
 		for _, st := range []layoutState{{}, {focus: focusSources}, {eqOpen: true}, {take: true}, {focus: focusPlayer, eqOpen: true}} {
 			m.mode, m.take, m.eqOpen, m.focus = mode, st.take, st.eqOpen, st.focus
 			for _, sz := range sizes {

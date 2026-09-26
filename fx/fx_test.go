@@ -114,7 +114,7 @@ func TestStockEffectsPaintTheWholeFrame(t *testing.T) {
 	for _, e := range Stock() {
 		f := &Frame{}
 		f.Resize(60, 40)
-		for i := range 10 {
+		for i := range 60 { // two seconds: ridges and rain build up over time
 			e.Render(f, a, float64(i)/30, 1.0/30, th)
 		}
 		seen := map[RGB]bool{}

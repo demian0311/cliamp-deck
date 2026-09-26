@@ -18,7 +18,9 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
   and reverts when focus leaves. Sources minimum 8 rows (5 when rows < 30).
 
 ## Visualizer
-- One cycle: spectrum → plasma → tunnel → fire → metaballs (`fx.Stock()` after spectrum).
+- One cycle, `fx.Stock()` in order: plasma → tunnel → fire → metaballs → ridges → aurora → ripples → warp → scope →
+  rain. The braille spectrum was removed 2026-09-26; a saved `visualizer = "spectrum"` falls back to the first.
+  Rain is an `fx.GlyphEffect`: the deck calls `RenderCells` and draws coloured glyphs instead of blitting pixels.
 - Cycle: `v` anywhere; `←/→` when the visualizer has focus or has taken over; clickable `‹ n/N ›` on its frame.
 - Takeover: click the visualizer, Enter when it has focus, or `V` anywhere. It fills the terminal; click / Enter / Esc / `V`
   returns. A one-line bar (state, track, station, `‹ name ›`) shows for 3 s after any key or mouse move, then fades.

@@ -15,7 +15,6 @@ import (
 const (
 	specInterval  = 33 * time.Millisecond // spectrum.get rate, ~30 fps
 	stateInterval = 500 * time.Millisecond
-	hiRes         = 480             // dot columns the spectrum is smoothed at; panels sample from it
 	barLinger     = 3 * time.Second // takeover bar stays this long after a key or mouse move
 	doubleClick   = 400 * time.Millisecond
 )
@@ -61,20 +60,19 @@ type model struct {
 	online bool
 
 	bands []float64 // latest raw bands from cliamp
-	hi    []float64 // bands resampled to hiRes dot columns, auto-gained
-	gain  float64   // slow-moving loudest band, the auto-gain reference
-	pk    peaks     // falling caps over hi
 	// The player's meter: four frequency ranges, lows to highs, each
 	// auto-gained on its own so the quiet highs move as visibly as the bass.
 	levels, levelGain, levelPeak [meterRanges]float64
 	peakWait                     [meterRanges]int
 	marq                         float64
 
-	// Visualizer: mode 0 is the braille spectrum, 1.. index effects[mode-1].
+	// Visualizer: mode indexes effects. A GlyphEffect draws into cells rather
+	// than frame.
 	effects  []fx.Effect
 	mode     int
 	an       *fx.Analyzer
 	frame    *fx.Frame
+	cells    *fx.Cells
 	start    time.Time
 	lastSpec time.Time
 
@@ -124,7 +122,7 @@ type model struct {
 
 func newModel(c client, themePath, statePath string) model {
 	th, _ := fx.LoadTheme(themePath)
-	m := model{c: c, effects: fx.Stock(), mode: 1, an: &fx.Analyzer{}, frame: &fx.Frame{},
+	m := model{c: c, effects: fx.Stock(), an: &fx.Analyzer{}, frame: &fx.Frame{}, cells: &fx.Cells{},
 		start: time.Now(), themePath: themePath, theme: th, themeMod: modTime(themePath),
 		focus: focusVis, statePath: statePath, lastClickRow: -1}
 	m.saved = loadState(statePath)
@@ -200,7 +198,7 @@ func (m *model) say(s string) { m.note, m.noteAt = s, time.Now() }
 func (m model) ls() layoutState { return layoutState{take: m.take, eqOpen: m.eqOpen, focus: m.focus} }
 
 func (m model) modeNames() []string {
-	names := []string{"spectrum"}
+	var names []string
 	for _, e := range m.effects {
 		names = append(names, e.Name())
 	}
@@ -210,7 +208,7 @@ func (m model) modeNames() []string {
 func (m model) modeName() string { return m.modeNames()[m.mode] }
 
 func (m *model) cycle(d int) {
-	n := len(m.effects) + 1
+	n := len(m.effects)
 	m.mode = (m.mode + d + n) % n
 	m.saved.Visualizer = m.modeName()
 	m.persist()
@@ -414,20 +412,6 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) onSpectrum(msg specMsg) (tea.Model, tea.Cmd) {
 	m.bands = msg.bands
-	// Auto-gain for the braille spectrum: magnitudes swing with source loudness
-	// and volume, so scale to a slowly decaying recent peak. The floor stops
-	// silence being amplified into noise.
-	top := 0.0
-	for _, v := range msg.bands {
-		top = max(top, v)
-	}
-	m.gain = max(top, m.gain*0.995, 0.003)
-	scaled := make([]float64, len(msg.bands))
-	for i, v := range msg.bands {
-		scaled[i] = v / m.gain * 0.9
-	}
-	m.hi = resample(scaled, hiRes)
-	m.pk.update(m.hi)
 	m.updateLevels(msg.bands)
 	m.marq += 0.2
 	now := time.Now()
@@ -437,10 +421,16 @@ func (m model) onSpectrum(msg specMsg) (tea.Model, tea.Cmd) {
 	}
 	m.lastSpec = now
 	a := m.an.Update(msg.bands, dt) // raw: the analyzer normalises per signal
-	if m.mode > 0 && m.w > 0 {
+	if m.w > 0 && m.mode < len(m.effects) {
 		if in := m.layout().visInner(); !in.empty() {
-			m.frame.Resize(in.w, in.h*2)
-			m.effects[m.mode-1].Render(m.frame, a, now.Sub(m.start).Seconds(), dt, m.theme)
+			t := now.Sub(m.start).Seconds()
+			if ge, ok := m.effects[m.mode].(fx.GlyphEffect); ok {
+				m.cells.Resize(in.w, in.h)
+				ge.RenderCells(m.cells, a, t, dt, m.theme)
+			} else {
+				m.frame.Resize(in.w, in.h*2)
+				m.effects[m.mode].Render(m.frame, a, t, dt, m.theme)
+			}
 		}
 	}
 	return m, m.fetchSpec()

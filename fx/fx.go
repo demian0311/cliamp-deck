@@ -74,7 +74,7 @@ type Effect interface {
 
 // Stock is the built-in set, in `v` cycle order.
 func Stock() []Effect {
-	return []Effect{&Plasma{}, &Tunnel{}, &Fire{}, &Metaballs{}}
+	return []Effect{&Plasma{}, &Tunnel{}, &Fire{}, &Metaballs{}, &Ridges{}, &Aurora{}, &Ripples{}, &Warp{}, &Scope{}, &Rain{}}
 }
 
 // Analyzer turns cliamp's ten log-spaced bands into the Audio signals.

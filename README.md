@@ -40,9 +40,10 @@ with 24-bit fg/bg, so the terminal must support truecolor. Colours come from the
 `omarchy theme set`.
 
 Known limits (2026-09-26):
-- `spectrum.get` serves 10 bands; the deck interpolates to braille resolution.
+- `spectrum.get` serves 10 bands and no waveform; every visualizer and the level meter work from those bands
+  (scope draws its figures from them, not from the real signal).
 - A cliamp *TUI* instance only refreshes its bands while its own visualizer renders, so attached to one
-  the spectrum can freeze. Run cliamp as `--daemon` for a live spectrum.
+  the visualizers can freeze. Run cliamp as `--daemon` for live bands.
 - Providers only appear once configured in cliamp's config (e.g. Spotify needs a `[spotify]` section).
 - Titles with wide (CJK/emoji) glyphs will misalign the grid.
 
