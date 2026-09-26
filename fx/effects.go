@@ -142,13 +142,17 @@ func (*Metaballs) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 				b += w * float64(cols[i].B)
 			}
 			mix := RGB{uint8(r / field), uint8(g / field), uint8(b / field)}
-			var c RGB
-			if field > 1 {
-				c = lerp(mix, th.Bright, math.Min(0.45, (field-1)*0.08)+a.Beat*0.2)
-			} else {
-				c = lerp(th.Background, mix, math.Min(0.4, field*0.3))
-			}
-			f.Px[y*f.W+x] = c
+			// One continuous ramp from the background into each ball, so the
+			// edge is a fade rather than a rim; cores then warm toward white.
+			body := smoothstep(0.06, 1.5, field)
+			c := lerp(th.Background, mix, body)
+			f.Px[y*f.W+x] = lerp(c, th.Bright, math.Min(0.45, math.Max(0, field-1.5)*0.08+a.Beat*0.2*body))
 		}
 	}
+}
+
+// smoothstep eases 0→1 as x goes from lo to hi, flat at both ends.
+func smoothstep(lo, hi, x float64) float64 {
+	t := clamp01((x - lo) / (hi - lo))
+	return t * t * (3 - 2*t)
 }
