@@ -6,7 +6,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"cliamp-deck/fx"
+	"github.com/demian0311/cliamp-deck/fx"
 )
 
 // cls is a cell's colour role. Roles map to the terminal's ANSI palette so the

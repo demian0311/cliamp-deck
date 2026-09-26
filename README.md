@@ -4,9 +4,12 @@ Alternative terminal UI for [cliamp](https://github.com/bjarneo/cliamp). Draws a
 btop-style grid / Winamp-style player that re-flows across five size tiers; all
 audio, providers and the spectrum come from a running cliamp over its V2 IPC socket.
 
+Needs [cliamp](https://github.com/bjarneo/cliamp) installed (Omarchy ships it) and a truecolor terminal.
+
 ```sh
-go build -o cliamp-deck . && ./cliamp-deck          # starts `cliamp --daemon` if nothing is running
-./cliamp-deck --spawn=false --socket PATH           # attach to a specific instance only
+go install github.com/demian0311/cliamp-deck@latest
+cliamp-deck                                   # starts `cliamp --daemon` if nothing is running
+cliamp-deck --spawn=false --socket PATH       # attach to a specific instance only
 ```
 
 Keys: space play/pause · n/p skip · ←/→ seek · +/- volume · j/k move · enter open/load · esc back ·

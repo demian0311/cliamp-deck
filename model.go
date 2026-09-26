@@ -8,7 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/bjarneo/cliamp/ipc"
 
-	"cliamp-deck/fx"
+	"github.com/demian0311/cliamp-deck/fx"
 )
 
 const (

@@ -1,4 +1,4 @@
-module cliamp-deck
+module github.com/demian0311/cliamp-deck
 
 go 1.27.1
 
