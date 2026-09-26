@@ -1,8 +1,17 @@
 # cliamp-deck
 
-Alternative terminal UI for [cliamp](https://github.com/bjarneo/cliamp). Draws a
-btop-style grid / Winamp-style player that re-flows across five size tiers; all
-audio, providers and the spectrum come from a running cliamp over its V2 IPC socket.
+Alternative terminal UI for [cliamp](https://github.com/bjarneo/cliamp): a btop-style grid and a Winamp-style
+player that re-flow with the terminal, plus a stage of audio-reactive demoscene effects painted in your Omarchy
+theme's colours. All audio, providers and the spectrum come from a running cliamp over its V2 IPC socket.
+
+![Fullscreen plasma reacting to a radio stream](docs/screenshots/stage-plasma.gif)
+
+| | |
+|---|---|
+| ![Wide layout with metaballs, levels and EQ](docs/screenshots/wide-metaballs.png) | ![Wide layout with the fire effect](docs/screenshots/wide-fire.png) |
+| ![Quarter-size terminal: player, plasma stage, sources](docs/screenshots/quarter-plasma.png) | ![Fullscreen tunnel](docs/screenshots/full-tunnel.png) |
+
+Shown in Omarchy's Slate Dark theme, playing a cliamp radio stream.
 
 Needs [cliamp](https://github.com/bjarneo/cliamp) installed (Omarchy ships it) and a truecolor terminal. On start it
 asks the running cliamp which remote operations it supports, and exits with an update hint if any it uses are missing.
@@ -27,3 +36,7 @@ Known limits (2026-09-26):
   the spectrum can freeze. Run cliamp as `--daemon` for a live spectrum.
 - Providers only appear once configured in cliamp's config (e.g. Spotify needs a `[spotify]` section).
 - Titles with wide (CJK/emoji) glyphs will misalign the grid.
+
+Screenshots are real captures: the deck runs in tmux against a cliamp playing into a PipeWire null sink
+(`PIPEWIRE_NODE=<null sink>`), `tmux capture-pane -e` dumps each frame, and `docs/screenshots/ansi2png.py`
+renders it with the current Omarchy theme's terminal palette.
