@@ -317,8 +317,8 @@ func TestSplitStation(t *testing.T) {
 	}
 }
 
-// The radio level lists pinned entries, then countries in order of each one's
-// most popular station (no country last); → opens a country, ← returns to it.
+// The radio level lists pinned entries, then countries by station count, ties
+// alphabetical, no country last; → opens a country, ← returns to it.
 func TestRadioCountriesOpenWithArrows(t *testing.T) {
 	m := testModel(t)
 	m.focus = focusSources
@@ -329,6 +329,8 @@ func TestRadioCountriesOpenWithArrows(t *testing.T) {
 		{ID: "c:1", Name: "B [64k]"},
 		{ID: "c:2", Name: "C · France"},
 		{ID: "c:3", Name: "D [320k] · Germany"},
+		{ID: "c:4", Name: "E · Austria"},
+		{ID: "c:5", Name: "F"},
 	}})
 	labels := func() string {
 		var got []string
@@ -337,7 +339,7 @@ func TestRadioCountriesOpenWithArrows(t *testing.T) {
 		}
 		return strings.Join(got, ",")
 	}
-	if got := labels(); got != "United States (near you)|,countries|,Germany|2 ›,France|1 ›,elsewhere|1 ›" {
+	if got := labels(); got != "United States (near you)|,countries|,Germany|2 ›,Austria|1 ›,France|1 ›,elsewhere|2 ›" {
 		t.Fatalf("radio level: %s", got)
 	}
 	if !m.lists[tabSources].rows[2].current {
@@ -347,7 +349,7 @@ func TestRadioCountriesOpenWithArrows(t *testing.T) {
 	if r, _ := m.selected(); r.label != "Germany" {
 		t.Fatalf("down landed on %q", r.label)
 	}
-	m = key(key(m, "down"), "right")
+	m = key(key(key(m, "down"), "down"), "right")
 	if got := labels(); !m.inCountry || got != "C|" {
 		t.Fatalf("opened France: %s", got)
 	}

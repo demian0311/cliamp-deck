@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"regexp"
 	"slices"
@@ -171,8 +172,8 @@ func (m *model) topRows() []row {
 // playlistRows lists the open provider's playlists. Radio directory stations
 // (catalog, favorite and search IDs) arrive named "Name [128k] · Country"; the
 // bitrate moves to the dim right column. Catalog stations are not listed flat:
-// the provider level shows their countries, in order of each one's most
-// popular station, and opening a country lists its stations.
+// the provider level shows their countries, most stations first, and opening
+// a country lists its stations.
 func (m *model) playlistRows(provider string, list []ipc.PlaylistInfo) []row {
 	var rows []row
 	var countries []string
@@ -199,10 +200,17 @@ func (m *model) playlistRows(provider string, list []ipc.PlaylistInfo) []row {
 	if m.inCountry {
 		return byCountry[m.country]
 	}
-	// Stations with no country go last, however popular.
-	if i := slices.Index(countries, ""); i >= 0 {
-		countries = append(slices.Delete(countries, i, i+1), "")
-	}
+	// Most stations first, ties alphabetical; stations with no country go
+	// last, however many.
+	slices.SortFunc(countries, func(a, b string) int {
+		if (a == "") != (b == "") {
+			return cmp.Compare(b, a)
+		}
+		if n := cmp.Compare(len(byCountry[b]), len(byCountry[a])); n != 0 {
+			return n
+		}
+		return strings.Compare(a, b)
+	})
 	if len(countries) > 0 && len(rows) > 0 {
 		rows = append(rows, row{kind: rowHeader, label: "countries"})
 	}
