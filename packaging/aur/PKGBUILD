@@ -9,7 +9,7 @@ license=('MIT')
 depends=('cliamp' 'glibc')
 makedepends=('go')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('44d341fc27ee080452ee1b1c2009ebe8d09e5d18e72c38365c67f52d662ee5fc')
 
 prepare() {
   cd "$pkgname-$pkgver"
