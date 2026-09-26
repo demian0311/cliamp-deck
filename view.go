@@ -146,15 +146,33 @@ func (m model) trackText() (title, source string) {
 	if t == nil {
 		return "nothing playing — pick a source", ""
 	}
-	title = t.Title
-	if t.Artist != "" {
-		title = t.Artist + " — " + t.Title
-	}
+	title = trackTitle(t.Artist, t.Title)
 	source = t.Album
 	if t.Station != "" {
 		source = t.Station
 	}
 	return title, source
+}
+
+// trackTitle joins artist and title for display. Some stations send stream
+// metadata as "Artist - Artist - Title"; cliamp splits at the first " - ", so
+// the title arrives still carrying the artist. Drop that repeat.
+func trackTitle(artist, title string) string {
+	artist = strings.TrimSpace(artist)
+	if artist == "" {
+		return title
+	}
+	for _, sep := range []string{" - ", " – ", " — "} {
+		if len(title) > len(artist)+len(sep) && strings.EqualFold(title[:len(artist)], artist) &&
+			strings.HasPrefix(title[len(artist):], sep) {
+			title = title[len(artist)+len(sep):]
+			break
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(title), artist) {
+		return artist
+	}
+	return artist + " — " + title
 }
 
 func (m model) stateGlyph() (string, cls) {

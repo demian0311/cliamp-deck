@@ -99,3 +99,19 @@ func stripANSI(s string) string {
 	}
 	return b.String()
 }
+
+func TestTrackTitleDropsARepeatedArtist(t *testing.T) {
+	cases := []struct{ artist, title, want string }{
+		{"Stella Jacobs", "Stella Jacobs - Ngak'thola (ft. Charlie SD)", "Stella Jacobs — Ngak'thola (ft. Charlie SD)"},
+		{"stella jacobs", "Stella Jacobs – Ngak'thola", "stella jacobs — Ngak'thola"},
+		{"Airglow", "Blueshift", "Airglow — Blueshift"},
+		{"", "Lofi Stream", "Lofi Stream"},
+		{"Boards of Canada", "Boards of Canada", "Boards of Canada"},
+		{"Air", "Airglow - Blueshift", "Air — Airglow - Blueshift"}, // a prefix that is not the whole artist stays
+	}
+	for _, c := range cases {
+		if got := trackTitle(c.artist, c.title); got != c.want {
+			t.Errorf("trackTitle(%q, %q) = %q, want %q", c.artist, c.title, got, c.want)
+		}
+	}
+}
