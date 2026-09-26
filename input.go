@@ -417,7 +417,7 @@ func (m model) click(ev tea.Mouse) (tea.Model, tea.Cmd) {
 		m.take = false
 		return m, nil
 	}
-	l := computeLayout(m.w, m.h, m.ls())
+	l := m.layout()
 	x, y := ev.X, ev.Y
 	prev, next := visControls(l)
 	switch {
@@ -470,7 +470,7 @@ func (m model) click(ev tea.Mouse) (tea.Model, tea.Cmd) {
 }
 
 func (m model) wheel(ev tea.Mouse) (tea.Model, tea.Cmd) {
-	l := computeLayout(m.w, m.h, m.ls())
+	l := m.layout()
 	if m.take || !l.sources.has(ev.X, ev.Y) {
 		return m, nil
 	}

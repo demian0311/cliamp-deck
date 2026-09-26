@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -489,5 +490,52 @@ func TestLoadingRowThrobs(t *testing.T) {
 	m = upd(m, opMsg{label: "playing cliamp radio", err: errors.New("no route")})
 	if m.pending != nil {
 		t.Fatal("throbber still spinning after the load failed")
+	}
+}
+
+// Focusing the list eases it taller over layoutDuration instead of snapping,
+// and the panels stay edge to edge on the way.
+func TestPanelsEaseToNewSizes(t *testing.T) {
+	m := testModel(t)
+	m.w, m.h = 100, 40
+	m.focus = focusVis
+	m = upd(m, tea.WindowSizeMsg{Width: 100, Height: 40})
+	before := m.layout().sources.h
+	m = upd(m, tea.KeyPressMsg{Code: tea.KeyTab}) // visualizer → sources
+	if m.focus != focusSources {
+		t.Fatalf("focus %d", m.focus)
+	}
+	start := m.anim.at
+	after := computeLayout(m.w, m.h, m.ls()).sources.h
+	mid := m.layoutAt(start.Add(layoutDuration / 3))
+	if !(mid.sources.h > before && mid.sources.h < after) {
+		t.Fatalf("sources %d → %d, a third of the way %d", before, after, mid.sources.h)
+	}
+	if mid.vis.y+mid.vis.h != mid.sources.y {
+		t.Errorf("visualizer ends at %d, sources start at %d", mid.vis.y+mid.vis.h, mid.sources.y)
+	}
+	if end := m.layoutAt(start.Add(layoutDuration)); end.sources.h != after {
+		t.Fatalf("settled at %d, want %d", end.sources.h, after)
+	}
+}
+
+// Every frame of every transition still fills exactly w×h cells.
+func TestRenderFitsMidAnimation(t *testing.T) {
+	for _, sz := range [][2]int{{280, 58}, {100, 40}, {100, 28}, {60, 24}} {
+		for _, k := range []string{"tab", "e", "V", "e", "tab"} {
+			m := testModel(t)
+			m.w, m.h = sz[0], sz[1]
+			m = upd(m, tea.KeyPressMsg{Text: k, Code: []rune(k)[0]})
+			if k == "tab" {
+				m = upd(m, tea.KeyPressMsg{Code: tea.KeyTab})
+			}
+			for f := 0; f <= 6; f++ {
+				m.anim.at = time.Now().Add(-layoutDuration * time.Duration(f) / 6)
+				lines := strings.Split(stripANSI(m.render()), "\n")
+				if len(lines) != sz[1] || len([]rune(lines[0])) != sz[0] {
+					t.Fatalf("%v after %q, frame %d: %d lines", sz, k, f, len(lines))
+				}
+			}
+		}
 	}
 }

@@ -1,5 +1,10 @@
 package main
 
+import (
+	"math"
+	"time"
+)
+
 // Layout per docs/design/layout.md: a Winamp stack (player, [EQ], visualizer,
 // sources), side-by-side when the terminal is much wider than tall, a
 // three-line mini form for tiny terminals, and a full-terminal takeover.
@@ -134,4 +139,56 @@ func (l layout) visInner() rect {
 		return l.vis.inner()
 	}
 	return l.vis
+}
+
+// layoutAnim eases the panels from the layout on screen when the layout state
+// changed (focus, EQ, takeover) to the new one, rather than snapping.
+type layoutAnim struct {
+	from layout
+	to   layoutState
+	at   time.Time
+	w, h int // terminal size the animation started at; a resize snaps
+}
+
+// layoutDuration is how long panels take to reach their new size.
+const layoutDuration = 180 * time.Millisecond
+
+// layout is the layout to draw and hit-test now.
+func (m model) layout() layout { return m.layoutAt(time.Now()) }
+
+func (m model) layoutAt(now time.Time) layout {
+	to := computeLayout(m.w, m.h, m.ls())
+	a := m.anim
+	t := float64(now.Sub(a.at)) / float64(layoutDuration)
+	if a.at.IsZero() || t >= 1 || a.w != m.w || a.h != m.h || a.from.shape != to.shape || a.to != m.ls() {
+		return to
+	}
+	t = 1 - (1-t)*(1-t)*(1-t) // ease out
+	out := to
+	out.player = lerpRect(a.from.player, to.player, t)
+	out.eq = lerpRect(a.from.eq, to.eq, t)
+	out.vis = lerpRect(a.from.vis, to.vis, t)
+	out.sources = lerpRect(a.from.sources, to.sources, t)
+	return out
+}
+
+// lerpRect moves a panel's edges. A panel appearing grows from nothing at its
+// new top; one disappearing shrinks into its old top. Edges are rounded, not
+// sizes, so panels that share an edge never gap or overlap.
+func lerpRect(a, b rect, t float64) rect {
+	switch {
+	case a.empty() && b.empty():
+		return b
+	case a.empty():
+		a = rect{b.x, b.y, b.w, 0}
+	case b.empty():
+		b = rect{a.x, a.y, a.w, 0}
+	}
+	at := func(p, q int) int { return int(math.Round(float64(p) + float64(q-p)*t)) }
+	x, y := at(a.x, b.x), at(a.y, b.y)
+	r := rect{x, y, at(a.x+a.w, b.x+b.w) - x, at(a.y+a.h, b.y+b.h) - y}
+	if r.h <= 0 || r.w <= 0 {
+		return rect{}
+	}
+	return r
 }

@@ -31,7 +31,7 @@ func (m model) render() string {
 		g.put(max(0, (m.w-len([]rune(msg)))/2), m.h/2, fit(msg, m.w), cDim)
 		return g.String()
 	}
-	l := computeLayout(m.w, m.h, m.ls())
+	l := m.layout()
 	if !l.vis.empty() {
 		m.drawVisual(g, l)
 	}

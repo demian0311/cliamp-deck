@@ -24,6 +24,8 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
   returns. A one-line bar (state, track, station, `‹ name ›`) shows for 3 s after any key or mouse move, then fades.
 
 ## Focus, keys, mouse
+- Layout changes (focus, EQ, takeover) ease over `layoutDuration` (ease-out) instead of snapping: panel edges
+  interpolate from what was on screen; a panel appearing grows from its new top. Shape changes and resizes snap.
 - Tab / Shift-Tab cycles focus: player → visualizer → sources. The focused frame is highlighted and its title drawn
   negative; the sources panel's active tab is negative only while it has focus. The open EQ belongs to player focus:
   it takes the keys (and the highlight) while the player has focus, and tab leaves it open.

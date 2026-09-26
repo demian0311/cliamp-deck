@@ -116,6 +116,8 @@ type model struct {
 
 	pending *pendingRow // the row whose Enter is still loading, if any
 
+	anim layoutAnim // the panels easing from one layout to the next
+
 	note   string
 	noteAt time.Time
 }
@@ -238,7 +240,19 @@ func (m *model) persist() {
 	}
 }
 
+// Update handles msg, then starts a layout animation if it moved the panels.
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	now := time.Now()
+	shown := m.layoutAt(now) // what is on screen before msg
+	next, cmd := m.update(msg)
+	nm := next.(model)
+	if ls := nm.ls(); ls != m.ls() {
+		nm.anim = layoutAnim{from: shown, to: ls, at: now, w: nm.w, h: nm.h}
+	}
+	return nm, cmd
+}
+
+func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
@@ -424,7 +438,7 @@ func (m model) onSpectrum(msg specMsg) (tea.Model, tea.Cmd) {
 	m.lastSpec = now
 	a := m.an.Update(msg.bands, dt) // raw: the analyzer normalises per signal
 	if m.mode > 0 && m.w > 0 {
-		if in := computeLayout(m.w, m.h, m.ls()).visInner(); !in.empty() {
+		if in := m.layout().visInner(); !in.empty() {
 			m.frame.Resize(in.w, in.h*2)
 			m.effects[m.mode-1].Render(m.frame, a, now.Sub(m.start).Seconds(), dt, m.theme)
 		}
