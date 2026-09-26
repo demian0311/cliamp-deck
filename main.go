@@ -27,6 +27,12 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	if c.alive() {
+		if err := checkCompat(c); err != nil {
+			fmt.Fprintln(os.Stderr, "cliamp-deck:", err)
+			os.Exit(1)
+		}
+	}
 	if _, err := tea.NewProgram(newModel(c, *theme)).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "cliamp-deck:", err)
 		os.Exit(1)
