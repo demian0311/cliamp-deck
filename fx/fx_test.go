@@ -23,6 +23,12 @@ func TestLoadThemeReadsColorsAndFallsBack(t *testing.T) {
 	if _, ok := th.Colors["# comment"]; ok {
 		t.Error("comment line parsed as a colour")
 	}
+	if g := th.Gradient("background", "red"); g.At(0) != th.Background || g.At(1) != th.Colors["red"] {
+		t.Errorf("Gradient by name: %v", g.Stops)
+	}
+	if th.Color("no_such_key") != th.Background {
+		t.Error("unknown colour name did not fall back to background")
+	}
 	if th.Colors["cyan"] == (RGB{}) {
 		t.Error("missing key did not fall back")
 	}
@@ -75,6 +81,9 @@ func TestAnalyzerOnRecordedRadio(t *testing.T) {
 				continue
 			}
 			bass, mid = append(bass, a.Bass), append(mid, a.Mid)
+			if len(a.Bands) != len(b) {
+				t.Fatalf("%s: %d normalised bands for %d input", name, len(a.Bands), len(b))
+			}
 			if a.Beat == 1 && prev < 1 {
 				beats++
 			}

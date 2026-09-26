@@ -12,6 +12,7 @@ type Plasma struct{ phase float64 }
 func (*Plasma) Name() string { return "plasma" }
 
 func (e *Plasma) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
+	wheel := th.Gradient("blue", "cyan", "green", "yellow", "orange", "red", "magenta", "blue")
 	e.phase += dt * (0.8 + a.Bass*2)
 	k := (0.16 + a.Mid*0.12) * (1 - a.Beat*0.12) // the field breathes in on a beat
 	sp := e.phase
@@ -22,7 +23,7 @@ func (e *Plasma) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 			cx, cy := fx-cx0, fy-cy0
 			v := math.Sin(fx*k+sp) + math.Sin((fy*k*1.3+sp)*0.8) +
 				math.Sin((cx*k+cy*k+sp)*0.6) + math.Sin(math.Hypot(cx, cy)*k*0.9-sp*1.4)
-			c := th.Cycle.At(frac(v/8 + sp*0.05 + a.Bass*0.3))
+			c := wheel.At(frac(v/8 + sp*0.05 + a.Bass*0.3))
 			c = lerp(th.Background, c, 0.55+math.Max(0, v)*0.1)
 			f.Px[y*f.W+x] = lerp(c, th.Bright, a.Beat*0.35)
 		}
@@ -36,6 +37,7 @@ type Tunnel struct{ z float64 }
 func (*Tunnel) Name() string { return "tunnel" }
 
 func (e *Tunnel) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
+	grad := th.Gradient("darker_background", "blue", "accent", "cyan", "bright_foreground")
 	e.z += dt * (0.6 + a.Bass*2.7)
 	twist := math.Sin(t*0.3) * 0.6 * a.Mid
 	for y := range f.H {
@@ -47,7 +49,7 @@ func (e *Tunnel) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 			v := math.Atan2(dy, dx)/math.Pi + twist*u*0.2 + t*0.05
 			ring := int(math.Floor(u * 6))
 			checker := (ring + int(math.Floor(v*8))) & 1
-			c := th.Tunnel.At(0.35 + frac(u*0.08)*0.6)
+			c := grad.At(0.35 + frac(u*0.08)*0.6)
 			if checker == 0 {
 				c = lerp(th.Background, c, 0.35)
 			}
@@ -79,6 +81,7 @@ func (e *Fire) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	for range int(a.Treble * float64(W) * 0.2) {
 		e.heat[(H-2)*W+rand.IntN(W)] = 1
 	}
+	heatmap := th.Gradient("darker_background", "red", "orange", "yellow", "bright_foreground")
 	cool := 40 / float64(H)
 	for y := range H - 1 {
 		for x := range W {
@@ -87,7 +90,7 @@ func (e *Fire) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 		}
 	}
 	for i, h := range e.heat {
-		f.Px[i] = th.Fire.At(h)
+		f.Px[i] = heatmap.At(h)
 	}
 }
 
@@ -111,7 +114,8 @@ func (*Metaballs) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 			r2: r * r,
 		}
 	}
-	glow := th.Metaballs.At(0.33)
+	grad := th.Gradient("background", "magenta", "bright_magenta", "bright_foreground")
+	glow := grad.At(0.33)
 	for y := range f.H {
 		for x := range f.W {
 			field := 0.0
@@ -121,7 +125,7 @@ func (*Metaballs) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 			}
 			var c RGB
 			if field > 1 {
-				c = th.Metaballs.At(0.4 + math.Min(0.5, (field-1)*0.12) + a.Beat*0.25)
+				c = grad.At(0.4 + math.Min(0.5, (field-1)*0.12) + a.Beat*0.25)
 			} else {
 				c = lerp(th.Background, glow, math.Min(0.45, field*0.35))
 			}

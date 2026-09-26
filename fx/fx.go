@@ -2,6 +2,40 @@
 // terminal cell holds two pixels (a ▀ half-block with separate foreground and
 // background colours), so the frame is W×2H for a W×H cell area. Effects take
 // their colours from a Theme, which is read from the active Omarchy theme.
+// The package imports only the standard library, so it can move into cliamp.
+//
+// # Adding an effect
+//
+// One file, one line. Write a type with Name and Render, then append it to
+// Stock. The deck's tests render every Stock effect at every layout, and
+// TestStockEffectsPaintTheWholeFrame checks it fills the frame, so a new
+// effect is covered without new tests.
+//
+//	// Pulse: concentric rings that ride outward on the bass.
+//	type Pulse struct{ r float64 }
+//
+//	func (*Pulse) Name() string { return "pulse" }
+//
+//	func (e *Pulse) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
+//		rings := th.Gradient("background", "accent", "bright_foreground")
+//		e.r += dt * (4 + a.Bass*20)
+//		for y := range f.H {
+//			for x := range f.W {
+//				d := math.Hypot(float64(x-f.W/2), float64(y-f.H/2))
+//				f.Px[y*f.W+x] = rings.At(frac((d-e.r)/12) + a.Beat*0.3)
+//			}
+//		}
+//	}
+//
+// Rules of thumb:
+//   - Take every colour from th (Color, Gradient, Background, Bright); never a
+//     literal, or the effect ignores the user's theme.
+//   - Advance motion by dt, not per call: frames arrive at ~30 fps but not
+//     evenly. Keep that state on the effect's own struct.
+//   - Audio levels are already normalised to the recent range of the music,
+//     so 0..1 is the full swing; Beat is 1 on an onset and decays.
+//   - Size scratch buffers from f.W and f.H on each call; the stage resizes
+//     with the terminal and fullscreen.
 package fx
 
 import "math"
@@ -22,10 +56,13 @@ func (f *Frame) Resize(w, h int) {
 	f.Px = make([]RGB, max(0, w*h))
 }
 
-// Audio is what every effect reacts to. Levels are 0..1; Beat jumps to 1 on
-// a detected onset and decays over ~300 ms.
+// Audio is what every effect reacts to. Levels are 0..1, normalised to the
+// music's recent range; Beat jumps to 1 on a detected onset and decays over
+// ~300 ms. Bands holds cliamp's ten log-spaced bands (70 Hz..16 kHz), each
+// normalised the same way, for effects that want more than three levels.
 type Audio struct {
 	Bass, Mid, Treble, Beat float64
+	Bands                   []float64
 }
 
 // Effect draws one frame. dt is the seconds since the previous frame; t is a
@@ -51,6 +88,7 @@ func Stock() []Effect {
 type Analyzer struct {
 	Audio
 	bass, mid, treble follower
+	bands             []follower
 	prev              []float64
 	fluxMean, fluxVar float64
 	sinceBeat         float64
@@ -105,6 +143,13 @@ func (an *Analyzer) Update(bands []float64, dt float64) Audio {
 	an.Bass = an.bass.norm(avg(0, 3), dt)
 	an.Mid = an.mid.norm(avg(3, 7), dt)
 	an.Treble = an.treble.norm(avg(7, 10), dt)
+	if len(an.bands) != len(bands) {
+		an.bands = make([]follower, len(bands))
+		an.Bands = make([]float64, len(bands))
+	}
+	for i, v := range bands {
+		an.Bands[i] = an.bands[i].norm(v, dt)
+	}
 
 	flux := 0.0
 	if len(an.prev) == len(bands) {

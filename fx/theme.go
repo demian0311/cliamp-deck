@@ -15,16 +15,33 @@ func OmarchyColors() string {
 	return filepath.Join(home, ".local", "state", "omarchy", "current", "theme", "colors.toml")
 }
 
-// Theme holds the named colours of an Omarchy colors.toml and the gradients
-// each effect paints with, derived from them.
+// Theme holds the named colours of an Omarchy colors.toml. Keys are the
+// colors.toml names: background, darker_background, foreground,
+// bright_foreground, accent, red, orange, yellow, green, cyan, blue, magenta,
+// bright_magenta, and whatever else the theme defines. Every key in fallback
+// is always present.
 type Theme struct {
 	Name   string
 	Colors map[string]RGB
 
-	Background              RGB
-	Cycle                   Gradient // plasma: the hue wheel of the theme's accents
-	Tunnel, Fire, Metaballs Gradient
-	Bright                  RGB
+	Background, Bright RGB // background and bright_foreground, used by most effects
+}
+
+// Color returns a named theme colour, or the background for an unknown name.
+func (th *Theme) Color(name string) RGB {
+	if c, ok := th.Colors[name]; ok {
+		return c
+	}
+	return th.Background
+}
+
+// Gradient builds a gradient through named theme colours, in order.
+func (th *Theme) Gradient(names ...string) Gradient {
+	g := Gradient{Stops: make([]RGB, len(names))}
+	for i, n := range names {
+		g.Stops[i] = th.Color(n)
+	}
+	return g
 }
 
 // fallback is used for any key a colors.toml omits, and when there is no
@@ -66,17 +83,8 @@ func LoadTheme(path string) (*Theme, error) {
 			colors[k], _ = parseHex(v)
 		}
 	}
-	c := func(k string) RGB { return colors[k] }
-	th := &Theme{
-		Name:       name,
-		Colors:     colors,
-		Background: c("background"),
-		Bright:     c("bright_foreground"),
-		Cycle:      Gradient{Stops: []RGB{c("blue"), c("cyan"), c("green"), c("yellow"), c("orange"), c("red"), c("magenta"), c("blue")}},
-		Tunnel:     Gradient{Stops: []RGB{c("darker_background"), c("blue"), c("accent"), c("cyan"), c("bright_foreground")}},
-		Fire:       Gradient{Stops: []RGB{c("darker_background"), c("red"), c("orange"), c("yellow"), c("bright_foreground")}},
-		Metaballs:  Gradient{Stops: []RGB{c("background"), c("magenta"), c("bright_magenta"), c("bright_foreground")}},
-	}
+	th := &Theme{Name: name, Colors: colors}
+	th.Background, th.Bright = th.Color("background"), th.Color("bright_foreground")
 	return th, err
 }
 
