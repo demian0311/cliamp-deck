@@ -24,7 +24,10 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
   returns. A one-line bar (state, track, station, `‹ name ›`) shows for 3 s after any key or mouse move, then fades.
 
 ## Focus, keys, mouse
-- Tab / Shift-Tab cycles focus: player → visualizer → sources. The focused frame is highlighted.
+- Tab / Shift-Tab cycles focus: player → visualizer → sources. The focused frame is highlighted and its title drawn
+  negative; the sources panel's active tab is negative only while it has focus. The open EQ belongs to player focus:
+  it takes the keys (and the highlight) while the player has focus, and tab leaves it open.
+- Player: `↑↓` volume ±2 dB, `→` opens the EQ at its first band. Seek is `,` `.` (±5 s) from anywhere.
 - Sources: tabs `sources | queue | history` (`[` `]` or click a tab). `↑↓`/wheel move (skipping headers); `→`/`l` opens a source or country, `←`/`h` goes back a level (esc too) — Radio lists pinned entries then countries (most stations first, ties alphabetical), a country lists its stations with bitrate in the dim right column; Enter plays now (replaces
   queue; `track.play`); `a` append to the end of the live playlist (`queue`, by path); `A` play next
   (`track.queue` for a supplied track, `queue.enqueue` for one already in the live playlist). Checked against
@@ -32,12 +35,14 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
 - `/` searches the current source; at the top level it searches all configured sources, results grouped by source.
 - Mouse now: visualizer (takeover, `‹ ›`), source rows (click select, double-click play, wheel scroll), tabs.
   Later: transport buttons and a clickable seek bar. Bubble Tea v2: set `View.MouseMode` (cell motion).
-- `e` opens the EQ under the player: `←→` band, `↑↓` gain ±1 dB (±12), `p` next preset (cliamp's 16 built-ins),
-  `e`/Esc close. Applied live through the `eq` operation (name | band + value).
+- `e` toggles the EQ under the player (and focuses the player): `←→` band, `←` past the first band closes it,
+  `↑↓` gain ±1 dB (±12), `p` next preset (cliamp's 16 built-ins), `e`/Esc close. Applied live through the `eq` operation (name | band + value).
 
 ## Player
 - Rows: title (marquee) · source/station · time line (track: thin bar; stream: `● LIVE on air mm:ss`) ·
-  transport + volume.
+  transport + volume. A stream drops `◄◄ ►►` (nothing to skip through). Volume is a braille bar (-30..+6 dB).
+- Meter (title row, right): one braille row, a bar per dot row — highs on top, lows at the bottom — from cliamp's
+  bands split into `meterRanges` ranges, each in dB below its own decaying peak over `meterRangeDB`.
 - One braille level meter (mono), colour ramp green → amber → red, top right. cliamp exposes no stereo levels
   over IPC; L/R needs an upstream PR first.
 

@@ -25,8 +25,9 @@ cliamp-deck --spawn=false --socket PATH       # attach to a specific instance on
 Layout: player on top, visualizer in the middle, sources at the bottom (side by side on very wide terminals).
 Click the visualizer, or press Enter on it, to let it take over the terminal; click or Esc to come back.
 
-Keys: space play/pause · n/p skip · ←/→ seek · +/- volume · Tab focus player → visualizer → sources ·
-v or ‹ › cycle visualizers (←/→ when it has focus) · V take over · e EQ (←/→ band, ↑/↓ gain, p preset) ·
+Keys: space play/pause · n/p skip · , . seek · +/- volume · Tab focus player → visualizer → sources (the focused panel's title turns negative) ·
+in the player: ↑/↓ volume, → EQ (←/→ band, ↑/↓ gain, p preset, ← past the first band back to the player) ·
+v or ‹ › cycle visualizers (←/→ when it has focus) · V take over · e EQ from anywhere ·
 in sources: ↑/↓ move, → open a source or country, ← back (Radio lists countries; open one for its stations), Enter play, a add to queue, A play next, [ ] tabs (sources/queue/history), / search,
 s set up a source with `cliamp setup` · q quit. Mouse: click and double-click rows, scroll the list, click tabs.
 

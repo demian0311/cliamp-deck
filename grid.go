@@ -143,7 +143,7 @@ func (g *grid) useTheme(th *fx.Theme) {
 	g.shade = fmt.Sprintf("#%02x%02x%02x", mix(bg.R, fg.R), mix(bg.G, fg.G), mix(bg.B, fg.B))
 }
 
-func (g *grid) box(x, y, w, h int, title string, c cls) {
+func (g *grid) box(x, y, w, h int, title string, c, tc cls) {
 	if w < 4 || h < 2 {
 		return
 	}
@@ -157,7 +157,7 @@ func (g *grid) box(x, y, w, h int, title string, c cls) {
 	if title != "" {
 		n := len([]rune(title))
 		g.set(x+2, y, '┤', c)
-		g.put(x+3, y, title, cTitle)
+		g.put(x+3, y, title, tc)
 		g.set(x+3+n, y, '├', c)
 	}
 }

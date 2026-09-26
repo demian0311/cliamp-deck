@@ -59,13 +59,28 @@ func (m model) render() string {
 	return g.String()
 }
 
-// frame draws a panel border, highlighted when the panel has keyboard focus.
+// frame draws a panel border, highlighted when the panel has keyboard focus;
+// the focused panel's title turns negative.
 func (m model) drawFrame(g *grid, r rect, title string, c cls, area focusArea) {
-	if m.focus == area {
-		c = cFocus
+	tc := cTitle
+	if m.has(area) {
+		c, tc = cFocus, cSel
 	}
-	g.box(r.x, r.y, r.w, r.h, title, c)
+	g.box(r.x, r.y, r.w, r.h, title, c, tc)
 }
+
+// has reports whether keys go to area. The EQ belongs to the player: while it
+// is open, the player's keys drive it, so it rather than the player looks
+// focused.
+func (m model) has(area focusArea) bool {
+	if area == focusPlayer && m.eqOpen {
+		return false
+	}
+	return m.focus == area
+}
+
+// eqFocused reports whether the open EQ takes the keys.
+func (m model) eqFocused() bool { return m.eqOpen && m.focus == focusPlayer }
 
 func (m model) drawVisual(g *grid, l layout) {
 	in := l.visInner()
@@ -152,30 +167,46 @@ func (m model) drawPlayer(g *grid, r rect) {
 		m.drawTimeLine(g, ix, iy+2, iw)
 	}
 	if ih >= 4 {
-		g.put(ix, iy+3, "◄◄  ►  ‖  ■  ►►", cWhite)
+		// A stream has nothing to skip back or forward through.
+		transport := "◄◄  ►  ‖  ■  ►►"
+		if m.live() {
+			transport = "►  ‖  ■"
+		}
+		g.put(ix, iy+3, transport, cWhite)
 		if vw := min(10, iw-28); vw > 3 {
-			n := int(math.Round(clamp01((m.snap.Volume+30)/36) * float64(vw)))
-			vol := fmt.Sprintf("vol %s%s %+.0fdB", strings.Repeat("▰", n), strings.Repeat("▱", vw-n), m.snap.Volume)
-			g.put(ix+iw-len([]rune(vol)), iy+3, vol, cCyan)
+			db := fmt.Sprintf(" %+.0fdB", m.snap.Volume)
+			x := ix + iw - vw - len(db)
+			g.put(x-4, iy+3, "vol", cCyan)
+			drawVolume(g, x, iy+3, vw, m.snap.Volume)
+			g.put(x+vw, iy+3, db, cCyan)
 		}
 	}
 }
 
-// drawMeter is a one-row braille level bar: two dot columns per cell, full
-// height, coloured by position. cliamp exposes one combined level, not L/R.
+// drawMeter is a one-row braille meter with a bar per dot row: highs on top,
+// lows at the bottom (see updateLevels), coloured by how far it reaches.
 func (m model) drawMeter(g *grid, x, y, w int) {
-	lvl := 0.0
-	if len(m.hist) > 0 {
-		lvl = clamp01(m.hist[len(m.hist)-1] * 2)
+	fills := make([]float64, meterRanges)
+	for r := range meterRanges {
+		fills[r] = m.levels[meterRanges-1-r]
 	}
-	n := int(math.Round(lvl * float64(w*2)))
-	for i := range w {
-		ch, c := '⣀', cDim
-		switch {
-		case n > i*2+1:
-			ch, c = '⣿', heightClass(float64(i)/float64(w)*0.95)
-		case n > i*2:
-			ch, c = '⡇', heightClass(float64(i)/float64(w)*0.95)
+	for i, ch := range brailleBars(fills, w) {
+		c := heightClass(float64(i) / float64(w) * 0.95)
+		if ch == 0x2800 {
+			ch, c = '⣀', cDim
+		}
+		g.set(x+i, y, ch, c)
+	}
+}
+
+// drawVolume is the volume as a braille bar in the meter's style, full height,
+// across -30..+6 dB.
+func drawVolume(g *grid, x, y, w int, db float64) {
+	f := clamp01((db + 30) / 36)
+	for i, ch := range brailleBars([]float64{f, f, f, f}, w) {
+		c := cCyan
+		if ch == 0x2800 {
+			ch, c = '⣀', cDim
 		}
 		g.set(x+i, y, ch, c)
 	}
@@ -207,7 +238,11 @@ func (m model) drawEQ(g *grid, r rect) {
 	if m.eqBand < len(m.snap.EQBands) {
 		sel = m.snap.EQBands[m.eqBand]
 	}
-	g.box(r.x, r.y, r.w, r.h, fmt.Sprintf("eq · %s · %s Hz %+.0f dB · ←→ band ↑↓ gain p preset", preset, eqLabels[m.eqBand], sel), cFocus)
+	c, tc := cMagenta, cTitle
+	if m.eqFocused() {
+		c, tc = cFocus, cSel
+	}
+	g.box(r.x, r.y, r.w, r.h, fmt.Sprintf("eq · %s · %s Hz %+.0f dB · ←→ band ↑↓ gain p preset", preset, eqLabels[m.eqBand], sel), c, tc)
 	in := r.inner()
 	ih := in.h - 1 // last inner row holds the labels
 	if ih < 3 || in.w < 30 {
@@ -270,8 +305,11 @@ func (m model) drawSources(g *grid, r rect) {
 	m.drawFrame(g, r, "", cYellow, focusSources)
 	for i, t := range tabRects(r) {
 		c := cDim
-		if i == m.tab {
+		switch {
+		case i == m.tab && focused:
 			c = cSel
+		case i == m.tab:
+			c = cTitle
 		}
 		if t.x+t.w < r.x+r.w-1 {
 			g.put(t.x, t.y, " "+tabNames[i]+" ", c)
@@ -390,8 +428,8 @@ func (m model) hints() [][2]string {
 	switch {
 	case m.searching:
 		return [][2]string{{"⏎", "search"}, {"esc", "cancel"}}
-	case m.eqOpen:
-		return [][2]string{{"←→", "band"}, {"↑↓", "gain"}, {"p", "preset"}, {"e", "close"}}
+	case m.eqFocused():
+		return [][2]string{{"←→", "band"}, {"↑↓", "gain"}, {"p", "preset"}, {"esc", "player"}, {"tab", "focus"}}
 	case m.focus == focusSources:
 		keys := [][2]string{{"↑↓", "move"}, {"→", "open"}, {"←", "back"}, {"⏎", "play"}, {"a", "queue"}, {"A", "play next"}, {"[ ]", "tabs"}, {"/", "search"}}
 		if r, ok := m.selected(); ok && r.kind == rowSetup {
@@ -401,7 +439,10 @@ func (m model) hints() [][2]string {
 	case m.focus == focusVis:
 		return [][2]string{{"←→", "visual"}, {"⏎", "take over"}, {"␣", "play"}, {"e", "eq"}, {"/", "search"}, {"tab", "focus"}, {"q", "quit"}}
 	}
-	return [][2]string{{"␣", "play"}, {"n/p", "skip"}, {"←→", "seek"}, {"+/-", "vol"}, {"v", "visual"}, {"e", "eq"}, {"tab", "focus"}, {"q", "quit"}}
+	if m.live() {
+		return [][2]string{{"␣", "play"}, {"↑↓", "vol"}, {"→", "eq"}, {"v", "visual"}, {"tab", "focus"}, {"q", "quit"}}
+	}
+	return [][2]string{{"␣", "play"}, {"↑↓", "vol"}, {"→", "eq"}, {"n/p", "skip"}, {", .", "seek"}, {"v", "visual"}, {"tab", "focus"}, {"q", "quit"}}
 }
 
 func (m model) trackText() (title, source string) {

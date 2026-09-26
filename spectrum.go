@@ -74,3 +74,47 @@ func (p *peaks) update(vals []float64) []float64 {
 	}
 	return p.v
 }
+
+// meterRanges is how many frequency ranges the player's meter shows: one per
+// braille dot row, so all of them fit in a single text row.
+const meterRanges = 4
+
+// meterRangeDB is how far below a range's recent peak its bar reaches empty.
+const meterRangeDB = 6
+
+// updateLevels splits the bands into meterRanges contiguous ranges (with
+// cliamp's ten: 70–180 Hz, 320 Hz–1k, 3–6k, 12–16k) and takes each range's
+// loudest band in dB against that range's own slowly decaying peak, over
+// meterRangeDB. Levels jump up and fall back gently, like a meter needle.
+func (m *model) updateLevels(bands []float64) {
+	n := len(bands)
+	for r := range meterRanges {
+		top := 0.0
+		for _, v := range bands[r*n/meterRanges : (r+1)*n/meterRanges] {
+			top = max(top, v)
+		}
+		m.levelGain[r] = max(top, m.levelGain[r]*0.999, 0.002)
+		v := 0.0
+		if top > 0 {
+			v = clamp01(1 + 20*math.Log10(top/m.levelGain[r])/meterRangeDB)
+		}
+		m.levels[r] = max(v, m.levels[r]-0.04)
+	}
+}
+
+// brailleBars renders one row of cells holding up to four horizontal bars, one
+// per dot row, top to bottom; each fill is 0..1 across 2*w dot columns.
+func brailleBars(fills []float64, w int) []rune {
+	rowBits := [4][2]rune{{0x01, 0x08}, {0x02, 0x10}, {0x04, 0x20}, {0x40, 0x80}}
+	out := make([]rune, w)
+	for i := range out {
+		out[i] = 0x2800
+	}
+	for r, f := range fills {
+		dots := int(math.Round(clamp01(f) * float64(w*2)))
+		for d := range dots {
+			out[d/2] |= rowBits[r][d%2]
+		}
+	}
+	return out
+}

@@ -15,7 +15,6 @@ import (
 const (
 	specInterval  = 33 * time.Millisecond // spectrum.get rate, ~30 fps
 	stateInterval = 500 * time.Millisecond
-	histLen       = 600
 	hiRes         = 480             // dot columns the spectrum is smoothed at; panels sample from it
 	barLinger     = 3 * time.Second // takeover bar stays this long after a key or mouse move
 	doubleClick   = 400 * time.Millisecond
@@ -65,8 +64,10 @@ type model struct {
 	hi    []float64 // bands resampled to hiRes dot columns, auto-gained
 	gain  float64   // slow-moving loudest band, the auto-gain reference
 	pk    peaks     // falling caps over hi
-	hist  []float64
-	marq  float64
+	// The player's meter: four frequency ranges, lows to highs, each
+	// auto-gained on its own so the quiet highs move as visibly as the bass.
+	levels, levelGain [meterRanges]float64
+	marq              float64
 
 	// Visualizer: mode 0 is the braille spectrum, 1.. index effects[mode-1].
 	effects  []fx.Effect
@@ -362,20 +363,12 @@ func (m model) onSpectrum(msg specMsg) (tea.Model, tea.Cmd) {
 	}
 	m.gain = max(top, m.gain*0.995, 0.003)
 	scaled := make([]float64, len(msg.bands))
-	lvl := 0.0
 	for i, v := range msg.bands {
 		scaled[i] = v / m.gain * 0.9
-		lvl += scaled[i]
-	}
-	if len(scaled) > 0 {
-		lvl /= float64(len(scaled))
 	}
 	m.hi = resample(scaled, hiRes)
 	m.pk.update(m.hi)
-	m.hist = append(m.hist, lvl)
-	if len(m.hist) > histLen {
-		m.hist = m.hist[len(m.hist)-histLen:]
-	}
+	m.updateLevels(msg.bands)
 	m.marq += 0.2
 	now := time.Now()
 	dt := 1.0 / 30

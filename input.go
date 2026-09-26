@@ -31,13 +31,17 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 		}
 		return m.common(k)
 	}
-	if m.eqOpen {
+	if m.eqFocused() && k != "tab" && k != "shift+tab" {
 		switch k {
 		case "left", "h":
-			m.eqBand = (m.eqBand + 9) % 10
+			if m.eqBand == 0 { // past the first band is back to the player
+				m.eqOpen = false
+				return m, nil
+			}
+			m.eqBand--
 			return m, nil
 		case "right", "l":
-			m.eqBand = (m.eqBand + 1) % 10
+			m.eqBand = min(9, m.eqBand+1)
 			return m, nil
 		case "up", "k":
 			cmd := m.setEQBand(m.eqBand, 1)
@@ -66,7 +70,7 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 		m.take = true
 		return m, nil
 	case "e":
-		m.eqOpen = true
+		m.eqOpen, m.focus = !m.eqOpen, focusPlayer
 		return m, nil
 	case "/":
 		m.focus, m.tab, m.searching, m.query = focusSources, tabSources, true, ""
@@ -79,6 +83,18 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 		return m.switchTab((m.tab + d) % tabCount)
 	}
 	switch m.focus {
+	case focusPlayer:
+		switch k {
+		case "up", "k":
+			return m, m.run("", "volume.adjust", map[string]float64{"value": 2})
+		case "down", "j":
+			return m, m.run("", "volume.adjust", map[string]float64{"value": -2})
+		case "right", "l":
+			m.eqOpen, m.eqBand = true, 0
+			return m, nil
+		case "left", "h":
+			return m, nil
+		}
 	case focusVis:
 		switch k {
 		case "left":
@@ -152,9 +168,9 @@ func (m model) common(k string) (tea.Model, tea.Cmd) {
 		return m, m.run("", "volume.adjust", map[string]float64{"value": 2})
 	case "-", "_":
 		return m, m.run("", "volume.adjust", map[string]float64{"value": -2})
-	case "right", "l":
+	case ".":
 		return m, m.run("", "seek", map[string]float64{"value": 5})
-	case "left", "h":
+	case ",":
 		return m, m.run("", "seek", map[string]float64{"value": -5})
 	case "v":
 		m.cycle(1)

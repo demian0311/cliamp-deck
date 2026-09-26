@@ -382,3 +382,52 @@ func TestRadioCountriesOpenWithArrows(t *testing.T) {
 		t.Error("← at the top level left the list")
 	}
 }
+
+// In the player, → opens the EQ and ← past its first band returns; tab still
+// moves focus with the EQ open, and the focused panel's title turns negative.
+func TestPlayerArrowsOpenAndLeaveTheEQ(t *testing.T) {
+	m := testModel(t)
+	m.focus = focusPlayer
+	m = key(m, "right")
+	if !m.eqFocused() || m.eqBand != 0 {
+		t.Fatal("→ in the player did not open the EQ")
+	}
+	m = key(key(m, "right"), "left")
+	if !m.eqOpen || m.eqBand != 0 {
+		t.Fatalf("band %d after → ←", m.eqBand)
+	}
+	m = key(m, "left")
+	if m.eqOpen {
+		t.Fatal("← on the first band did not return to the player")
+	}
+	m = key(key(m, "right"), "tab")
+	if m.focus != focusVis || !m.eqOpen {
+		t.Fatalf("tab with the EQ open: focus %d, open %v", m.focus, m.eqOpen)
+	}
+	if m.eqFocused() {
+		t.Error("the EQ still takes keys after focus left the player")
+	}
+	if !m.has(focusVis) || m.has(focusPlayer) {
+		t.Error("focus highlight is on the wrong panel")
+	}
+}
+
+func TestStreamsHideSkipButtons(t *testing.T) {
+	m := testModel(t)
+	m.h = 40 // tall enough for the transport row
+	if !strings.Contains(stripANSI(m.render()), "◄◄") {
+		t.Fatal("a track lost its skip buttons")
+	}
+	m.snap.Track.Stream, m.snap.Duration = true, 0
+	if strings.Contains(stripANSI(m.render()), "◄◄") {
+		t.Fatal("a stream still shows skip buttons")
+	}
+}
+
+func TestBrailleBarsStackFourRows(t *testing.T) {
+	got := string(brailleBars([]float64{1, 0.5, 0, 0.25}, 2))
+	// top row full, second half, third empty, bottom a quarter (one dot)
+	if got != "⡛⠉" {
+		t.Fatalf("got %q", got)
+	}
+}
