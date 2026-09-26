@@ -89,6 +89,9 @@ type model struct {
 	providers    []ipc.ProviderInfo
 	provider     string // open provider key in the sources tab; "" = top level
 	providerName string
+	stations     []ipc.PlaylistInfo // the open provider's list, as loaded so far
+	inCountry    bool               // a radio country is open; country is which
+	country      string
 	tab          int
 	lists        [tabCount]listState
 	searching    bool   // typing a query
@@ -258,6 +261,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.provider, m.providerName, m.inResults = msg.provider, msg.name, false
 		m.catalog = msg.catalog && msg.added > 0
+		m.stations = msg.list
+		if !msg.keepSel {
+			m.inCountry = false
+		}
 		rows := m.playlistRows(msg.provider, msg.list)
 		sel := firstSelectable(rows)
 		for i, r := range rows {

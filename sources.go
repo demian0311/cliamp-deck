@@ -32,6 +32,7 @@ const (
 	rowTrack                   // a single track; Enter plays, a appends, A plays next
 	rowHeader                  // a group label, not selectable for actions
 	rowSetup                   // a source cliamp can set up; s or Enter runs cliamp setup
+	rowCountry                 // a country of radio stations; Enter or → opens it
 )
 
 type row struct {
@@ -69,30 +70,6 @@ func (l *listState) move(d int) {
 			}
 		}
 	}
-}
-
-// jumpGroup moves the selection to the first row of the next (d > 0) or
-// previous (d < 0) group; going back from inside a group lands on its start.
-func (l *listState) jumpGroup(d int) {
-	start := func(i int) bool { // i opens a group: a row right after a header
-		return i > 0 && l.rows[i].kind != rowHeader && l.rows[i-1].kind == rowHeader
-	}
-	for i := l.sel + d; i >= 0 && i < len(l.rows); i += d {
-		if start(i) {
-			l.sel = i
-			return
-		}
-	}
-}
-
-// hasGroups reports whether the list is split under headers.
-func (l *listState) hasGroups() bool {
-	for _, r := range l.rows {
-		if r.kind == rowHeader {
-			return true
-		}
-	}
-	return false
 }
 
 // listStart is the first visible row so the selection stays in view.
@@ -191,12 +168,13 @@ func (m *model) topRows() []row {
 	return rows
 }
 
-// playlistRows lists a provider's playlists. Radio directory stations
+// playlistRows lists the open provider's playlists. Radio directory stations
 // (catalog, favorite and search IDs) arrive named "Name [128k] · Country"; the
-// bitrate moves to the dim right column, and catalog stations are grouped
-// under their country, countries in order of their most popular station.
+// bitrate moves to the dim right column. Catalog stations are not listed flat:
+// the provider level shows their countries, in order of each one's most
+// popular station, and opening a country lists its stations.
 func (m *model) playlistRows(provider string, list []ipc.PlaylistInfo) []row {
-	rows := make([]row, 0, len(list))
+	var rows []row
 	var countries []string
 	byCountry := map[string][]row{}
 	for _, p := range list {
@@ -218,20 +196,33 @@ func (m *model) playlistRows(provider string, list []ipc.PlaylistInfo) []row {
 		}
 		byCountry[country] = append(byCountry[country], r)
 	}
+	if m.inCountry {
+		return byCountry[m.country]
+	}
 	// Stations with no country go last, however popular.
 	if i := slices.Index(countries, ""); i >= 0 {
 		countries = append(slices.Delete(countries, i, i+1), "")
 	}
+	if len(countries) > 0 && len(rows) > 0 {
+		rows = append(rows, row{kind: rowHeader, label: "countries"})
+	}
 	for _, c := range countries {
-		label := c
-		if label == "" {
-			label = "elsewhere"
-		}
 		stations := byCountry[c]
-		rows = append(rows, row{kind: rowHeader, label: label, right: strconv.Itoa(len(stations)), color: cYellow})
-		rows = append(rows, stations...)
+		playing := slices.ContainsFunc(stations, func(r row) bool { return r.current })
+		rows = append(rows, row{kind: rowCountry, label: countryLabel(c), right: strconv.Itoa(len(stations)) + " ›",
+			key: countryKey + c, provider: provider, current: playing, color: cYellow})
 	}
 	return rows
+}
+
+// countryKey prefixes a country row's key so it never matches a playlist ID.
+const countryKey = "country:"
+
+func countryLabel(c string) string {
+	if c == "" {
+		return "elsewhere"
+	}
+	return c
 }
 
 // shortCountry trims the directory's official country names to what people

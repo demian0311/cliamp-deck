@@ -106,11 +106,15 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 		case "pgup":
 			l.move(-10)
 			return m, nil
-		case "}", "shift+down":
-			l.jumpGroup(1)
-			return m.moreIfAtEnd()
-		case "{", "shift+up":
-			l.jumpGroup(-1)
+		case "right", "l":
+			if r, ok := m.selected(); ok && (r.kind == rowProvider || r.kind == rowCountry) {
+				return m.activate()
+			}
+			return m, nil
+		case "left", "h":
+			if m.tab == tabSources && (m.inResults || m.provider != "") {
+				return m.back()
+			}
 			return m, nil
 		case "home":
 			l.sel = firstSelectable(l.rows)
@@ -244,6 +248,10 @@ func (m model) activate() (tea.Model, tea.Cmd) {
 		return m, m.run("playing "+r.label, "track.play", map[string]*ipc.TrackInfo{"track": r.track})
 	case rowSetup:
 		return m.connect(r)
+	case rowCountry:
+		m.inCountry, m.country = true, strings.TrimPrefix(r.key, countryKey)
+		m.lists[tabSources] = listState{rows: m.playlistRows(m.provider, m.stations)}
+		return m, nil
 	}
 	return m, nil
 }
@@ -279,6 +287,14 @@ func (m model) back() (tea.Model, tea.Cmd) {
 			return m.reopenProvider()
 		}
 		m.lists[tabSources] = listState{rows: m.topRows()}
+	case m.tab == tabSources && m.inCountry:
+		m.inCountry = false
+		m.lists[tabSources] = listState{rows: m.playlistRows(m.provider, m.stations)}
+		for i, r := range m.lists[tabSources].rows {
+			if r.key == countryKey+m.country {
+				m.lists[tabSources].sel = i
+			}
+		}
 	case m.tab == tabSources && m.provider != "":
 		key := m.provider
 		m.provider, m.providerName = "", ""

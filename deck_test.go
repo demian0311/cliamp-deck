@@ -317,37 +317,53 @@ func TestSplitStation(t *testing.T) {
 	}
 }
 
-// Catalog stations group under their country in order of each country's most
-// popular station; pinned entries stay on top and stationless countries last.
-func TestRadioCatalogGroupsByCountry(t *testing.T) {
+// The radio level lists pinned entries, then countries in order of each one's
+// most popular station (no country last); → opens a country, ← returns to it.
+func TestRadioCountriesOpenWithArrows(t *testing.T) {
 	m := testModel(t)
-	rows := m.playlistRows("radio", []ipc.PlaylistInfo{
+	m.focus = focusSources
+	m.snap.Playlist = "radio:c:3"
+	m = upd(m, playlistsMsg{provider: "radio", name: "Radio", catalog: true, added: 4, list: []ipc.PlaylistInfo{
 		{ID: "p:0", Name: "United States (near you)"},
 		{ID: "c:0", Name: "A [128k] · Germany"},
 		{ID: "c:1", Name: "B [64k]"},
 		{ID: "c:2", Name: "C · France"},
 		{ID: "c:3", Name: "D [320k] · Germany"},
-	})
-	var got []string
-	for _, r := range rows {
-		got = append(got, r.label+"|"+r.right)
+	}})
+	labels := func() string {
+		var got []string
+		for _, r := range m.lists[tabSources].rows {
+			got = append(got, r.label+"|"+r.right)
+		}
+		return strings.Join(got, ",")
 	}
-	want := []string{"United States (near you)|", "Germany|2", "A|128k", "D|320k", "France|1", "C|", "elsewhere|1", "B|64k"}
-	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Fatalf("rows:\n got %v\nwant %v", got, want)
+	if got := labels(); got != "United States (near you)|,countries|,Germany|2 ›,France|1 ›,elsewhere|1 ›" {
+		t.Fatalf("radio level: %s", got)
 	}
-
-	l := listState{rows: rows}
-	l.move(1) // steps over the Germany header
-	if l.sel != 2 {
-		t.Fatalf("move landed on %d", l.sel)
+	if !m.lists[tabSources].rows[2].current {
+		t.Error("the country playing now is not marked")
 	}
-	l.jumpGroup(1)
-	if rows[l.sel].label != "C" {
-		t.Fatalf("next group landed on %q", rows[l.sel].label)
+	m = key(m, "down") // steps over the countries header
+	if r, _ := m.selected(); r.label != "Germany" {
+		t.Fatalf("down landed on %q", r.label)
 	}
-	l.jumpGroup(-1)
-	if rows[l.sel].label != "A" {
-		t.Fatalf("previous group landed on %q", rows[l.sel].label)
+	m = key(key(m, "down"), "right")
+	if got := labels(); !m.inCountry || got != "C|" {
+		t.Fatalf("opened France: %s", got)
+	}
+	m = key(m, "left")
+	if r, _ := m.selected(); m.inCountry || r.label != "France" {
+		t.Fatalf("back landed on %q", r.label)
+	}
+	m = key(m, "left")
+	if m.provider != "" {
+		t.Fatal("← at the radio level did not return to the sources")
+	}
+	if r, _ := m.selected(); r.key != "radio" {
+		t.Fatalf("back to sources landed on %q", r.key)
+	}
+	m = key(m, "left")
+	if m.focus != focusSources {
+		t.Error("← at the top level left the list")
 	}
 }

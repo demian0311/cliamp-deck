@@ -27,7 +27,7 @@ Click the visualizer, or press Enter on it, to let it take over the terminal; cl
 
 Keys: space play/pause · n/p skip · ←/→ seek · +/- volume · Tab focus player → visualizer → sources ·
 v or ‹ › cycle visualizers (←/→ when it has focus) · V take over · e EQ (←/→ band, ↑/↓ gain, p preset) ·
-in sources: ↑/↓ move, { } jump between groups (radio stations sit under their country), Enter play, a add to queue, A play next, [ ] tabs (sources/queue/history), / search,
+in sources: ↑/↓ move, → open a source or country, ← back (Radio lists countries; open one for its stations), Enter play, a add to queue, A play next, [ ] tabs (sources/queue/history), / search,
 s set up a source with `cliamp setup` · q quit. Mouse: click and double-click rows, scroll the list, click tabs.
 
 The deck remembers your EQ and visualizer in `~/.config/cliamp-deck/state.toml` (cliamp's daemon does not
