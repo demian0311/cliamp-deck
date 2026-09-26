@@ -41,9 +41,53 @@ func Stock() []Effect {
 }
 
 // Analyzer turns cliamp's ten log-spaced bands into the Audio signals.
+//
+// cliamp serves eased bands, so absolute levels drift slowly and sit in a
+// narrow range that differs per station (measured 2026-09-26 on a radio
+// stream: bass 0.18–0.66, moving ~0.01 a frame; treble never above 0.10).
+// Each signal is therefore rescaled to its own recent range, and beats come
+// from spectral flux measured against its own recent spread rather than a
+// fixed jump in level.
 type Analyzer struct {
 	Audio
-	avgBass float64
+	bass, mid, treble follower
+	prev              []float64
+	fluxMean, fluxVar float64
+	sinceBeat         float64
+}
+
+// follower tracks a signal's recent floor and ceiling. Both jump outward at
+// once and relax inward with a time constant of rangeMemory seconds.
+type follower struct {
+	lo, hi float64
+	init   bool
+}
+
+const (
+	rangeMemory = 4.0  // seconds a loud or quiet extreme is remembered
+	minSpan     = 0.05 // below this a signal is treated as steady, not stretched to full scale
+	fluxMemory  = 1.5  // seconds of flux history the beat threshold adapts over
+	fluxSigma   = 1.5  // a beat is flux this many deviations above its mean
+	beatGap     = 0.18 // seconds; no two beats closer than this (~330 bpm)
+	beatDecay   = 3.2  // Beat falls from 1 to 0 in 1/beatDecay seconds
+)
+
+func (f *follower) norm(v, dt float64) float64 {
+	if !f.init {
+		f.lo, f.hi, f.init = v, v, true
+	}
+	k := 1 - math.Exp(-dt/rangeMemory)
+	if v < f.lo {
+		f.lo = v
+	} else {
+		f.lo += (v - f.lo) * k
+	}
+	if v > f.hi {
+		f.hi = v
+	} else {
+		f.hi += (v - f.hi) * k
+	}
+	return clamp01((v - f.lo) / math.Max(f.hi-f.lo, minSpan))
 }
 
 func (an *Analyzer) Update(bands []float64, dt float64) Audio {
@@ -58,15 +102,28 @@ func (an *Analyzer) Update(bands []float64, dt float64) Audio {
 		}
 		return s / float64(n)
 	}
-	bass := avg(0, 3)
-	an.Mid, an.Treble = avg(3, 7), avg(7, 10)
-	an.avgBass = an.avgBass*0.97 + bass*0.03
-	if bass > an.avgBass*1.35 && bass-an.Bass > 0.04 && an.Beat < 0.4 {
-		an.Beat = 1
-	} else {
-		an.Beat = math.Max(0, an.Beat-dt*3.2)
+	an.Bass = an.bass.norm(avg(0, 3), dt)
+	an.Mid = an.mid.norm(avg(3, 7), dt)
+	an.Treble = an.treble.norm(avg(7, 10), dt)
+
+	flux := 0.0
+	if len(an.prev) == len(bands) {
+		for i, v := range bands {
+			flux += math.Max(0, v-an.prev[i])
+		}
 	}
-	an.Bass = bass
+	an.prev = append(an.prev[:0], bands...)
+	threshold := an.fluxMean + fluxSigma*math.Sqrt(an.fluxVar) + 0.005
+	an.sinceBeat += dt
+	if flux > threshold && an.sinceBeat >= beatGap {
+		an.Beat, an.sinceBeat = 1, 0
+	} else {
+		an.Beat = math.Max(0, an.Beat-dt*beatDecay)
+	}
+	k := 1 - math.Exp(-dt/fluxMemory)
+	d := flux - an.fluxMean
+	an.fluxMean += d * k
+	an.fluxVar += (d*d - an.fluxVar) * k
 	return an.Audio
 }
 

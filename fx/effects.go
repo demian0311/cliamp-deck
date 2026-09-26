@@ -13,7 +13,7 @@ func (*Plasma) Name() string { return "plasma" }
 
 func (e *Plasma) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	e.phase += dt * (0.8 + a.Bass*2)
-	k := 0.16 + a.Mid*0.12
+	k := (0.16 + a.Mid*0.12) * (1 - a.Beat*0.12) // the field breathes in on a beat
 	sp := e.phase
 	cx0, cy0 := float64(f.W)/2, float64(f.H)/2
 	for y := range f.H {
@@ -24,7 +24,7 @@ func (e *Plasma) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 				math.Sin((cx*k+cy*k+sp)*0.6) + math.Sin(math.Hypot(cx, cy)*k*0.9-sp*1.4)
 			c := th.Cycle.At(frac(v/8 + sp*0.05 + a.Bass*0.3))
 			c = lerp(th.Background, c, 0.55+math.Max(0, v)*0.1)
-			f.Px[y*f.W+x] = lerp(c, th.Bright, a.Beat*0.25)
+			f.Px[y*f.W+x] = lerp(c, th.Bright, a.Beat*0.35)
 		}
 	}
 }
@@ -121,7 +121,7 @@ func (*Metaballs) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 			}
 			var c RGB
 			if field > 1 {
-				c = th.Metaballs.At(0.4 + math.Min(0.5, (field-1)*0.12) + a.Beat*0.1)
+				c = th.Metaballs.At(0.4 + math.Min(0.5, (field-1)*0.12) + a.Beat*0.25)
 			} else {
 				c = lerp(th.Background, glow, math.Min(0.45, field*0.35))
 			}

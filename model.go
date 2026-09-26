@@ -190,7 +190,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			dt = min(0.1, now.Sub(m.lastSpec).Seconds())
 		}
 		m.lastSpec = now
-		a := m.an.Update(scaled, dt)
+		a := m.an.Update(msg.bands, dt) // raw: the analyzer normalises per signal
 		if m.mode > 0 && m.w > 0 {
 			if st := m.layout().stageInner(); st.w > 0 && st.h > 0 {
 				m.frame.Resize(st.w, st.h*2)
