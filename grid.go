@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -56,6 +57,10 @@ type grid struct {
 	// a few thousand cells at 30 fps.
 	px       []bool
 	top, bot []fx.RGB
+	// Shaded cells keep their colour on a subtle background: the selected
+	// list row. shade is that background, a lipgloss colour string.
+	shaded []bool
+	shade  string
 }
 
 func newGrid(w, h int) *grid {
@@ -65,6 +70,8 @@ func newGrid(w, h int) *grid {
 	g.px = make([]bool, g.w*g.h)
 	g.top = make([]fx.RGB, g.w*g.h)
 	g.bot = make([]fx.RGB, g.w*g.h)
+	g.shaded = make([]bool, g.w*g.h)
+	g.shade = "236"
 	for i := range g.ch {
 		g.ch[i] = ' '
 	}
@@ -116,6 +123,26 @@ func (g *grid) paint(x, y, n int, c cls) {
 	}
 }
 
+// shadeRow puts n cells from x, y on the selection background.
+func (g *grid) shadeRow(x, y, n int) {
+	for i := range n {
+		if xx := x + i; xx >= 0 && xx < g.w && y >= 0 && y < g.h {
+			g.shaded[y*g.w+xx] = true
+		}
+	}
+}
+
+// useTheme shades selections a step from the theme's background toward its
+// foreground, so the highlight reads as a tint in any theme.
+func (g *grid) useTheme(th *fx.Theme) {
+	if th == nil {
+		return
+	}
+	bg, fg := th.Background, th.Bright
+	mix := func(a, b uint8) uint8 { return uint8(int(a) + (int(b)-int(a))*14/100) }
+	g.shade = fmt.Sprintf("#%02x%02x%02x", mix(bg.R, fg.R), mix(bg.G, fg.G), mix(bg.B, fg.B))
+}
+
 func (g *grid) box(x, y, w, h int, title string, c cls) {
 	if w < 4 || h < 2 {
 		return
@@ -139,16 +166,23 @@ func (g *grid) String() string {
 	var b strings.Builder
 	for y := range g.h {
 		run := make([]rune, 0, g.w)
-		cur := cNone
+		cur, curShaded := cNone, false
 		inPx := false
 		var lt, lb fx.RGB
 		flush := func() {
 			if len(run) == 0 {
 				return
 			}
-			if cur == cNone {
+			switch {
+			case curShaded:
+				st, ok := styles[cur]
+				if !ok {
+					st = lipgloss.NewStyle()
+				}
+				b.WriteString(st.Background(lipgloss.Color(g.shade)).Render(string(run)))
+			case cur == cNone:
 				b.WriteString(string(run))
-			} else {
+			default:
 				b.WriteString(styles[cur].Render(string(run)))
 			}
 			run = run[:0]
@@ -168,9 +202,9 @@ func (g *grid) String() string {
 				b.WriteString("\x1b[0m")
 				inPx = false
 			}
-			if g.cl[k] != cur {
+			if g.cl[k] != cur || g.shaded[k] != curShaded {
 				flush()
-				cur = g.cl[k]
+				cur, curShaded = g.cl[k], g.shaded[k]
 			}
 			run = append(run, g.ch[k])
 		}

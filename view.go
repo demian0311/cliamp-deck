@@ -25,6 +25,7 @@ func (m model) render() string {
 		return ""
 	}
 	g := newGrid(m.w, m.h)
+	g.useTheme(m.theme)
 	if m.snap == nil {
 		msg := "waiting for cliamp on " + m.c.sock + " …"
 		g.put(max(0, (m.w-len([]rune(msg)))/2), m.h/2, fit(msg, m.w), cDim)
@@ -339,12 +340,16 @@ func (m model) drawSources(g *grid, r rect) {
 		width := rows.w - len([]rune(right)) - 1
 		line := fit(left, width)
 		line += strings.Repeat(" ", max(0, width-len([]rune(line)))) + right + " "
-		if start+i == list.sel && focused {
-			c = cSel
+		selected := start+i == list.sel && focused
+		if selected && c == cNone {
+			c = cWhite
 		}
 		g.put(rows.x, y, line, c)
-		if c != cSel && right != "" {
+		if right != "" {
 			g.paint(rows.x+width, y, len([]rune(right)), cDim)
+		}
+		if selected {
+			g.shadeRow(rows.x, y, rows.w)
 		}
 	}
 	if n := len(list.rows); n > rows.h {
