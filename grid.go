@@ -26,6 +26,7 @@ const (
 	cTitle
 	cSel
 	cKey
+	cFocus
 )
 
 var styles = map[cls]lipgloss.Style{
@@ -40,6 +41,7 @@ var styles = map[cls]lipgloss.Style{
 	cTitle:   lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Bold(true),
 	cSel:     lipgloss.NewStyle().Reverse(true),
 	cKey:     lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true),
+	cFocus:   lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true),
 }
 
 // grid is a fixed-size cell buffer. Panels draw into it by coordinate, which

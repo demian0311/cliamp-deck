@@ -1,4 +1,4 @@
-# Layout spec (settled 2026-09-26, not yet built)
+# Layout spec (settled and built 2026-09-26)
 
 Decided in a round-by-round interview against the browser mockup (private artifact "Deck Layout Lab",
 https://claude.ai/artifact/XaZGcb9htX6kWANjRVM4TT). Replaces the current tiered grid in `view.go`.

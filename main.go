@@ -17,6 +17,7 @@ import (
 func main() {
 	sock := flag.String("socket", ipc.DefaultSocketPath(), "cliamp IPC socket")
 	theme := flag.String("theme", fx.OmarchyColors(), "Omarchy colors.toml the visualizers paint with")
+	statePath := flag.String("state", defaultStatePath(), "where the deck keeps its EQ and visualizer between runs")
 	spawn := flag.Bool("spawn", true, "start `cliamp --daemon` when nothing answers on the socket")
 	flag.Parse()
 
@@ -33,7 +34,7 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	if _, err := tea.NewProgram(newModel(c, *theme)).Run(); err != nil {
+	if _, err := tea.NewProgram(newModel(c, *theme, *statePath)).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "cliamp-deck:", err)
 		os.Exit(1)
 	}

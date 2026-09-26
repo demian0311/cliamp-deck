@@ -22,8 +22,16 @@ cliamp-deck                                   # starts `cliamp --daemon` if noth
 cliamp-deck --spawn=false --socket PATH       # attach to a specific instance only
 ```
 
-Keys: space play/pause · n/p skip · ←/→ seek · +/- volume · j/k move · enter open/load · esc back ·
-v cycle stage (spectrum, plasma, tunnel, fire, metaballs) · V fullscreen stage · q quit.
+Layout: player on top, visualizer in the middle, sources at the bottom (side by side on very wide terminals).
+Click the visualizer, or press Enter on it, to let it take over the terminal; click or Esc to come back.
+
+Keys: space play/pause · n/p skip · ←/→ seek · +/- volume · Tab focus player → visualizer → sources ·
+v or ‹ › cycle visualizers (←/→ when it has focus) · V take over · e EQ (←/→ band, ↑/↓ gain, p preset) ·
+in sources: ↑/↓ move, Enter play, a add to queue, A play next, [ ] tabs (sources/queue/history), / search,
+s set up a source with `cliamp setup` · q quit. Mouse: click and double-click rows, scroll the list, click tabs.
+
+The deck remembers your EQ and visualizer in `~/.config/cliamp-deck/state.toml` (cliamp's daemon does not
+save EQ) and reapplies the EQ when it attaches.
 
 Stage effects live in `fx/` (interface: pixel frame + bass/mid/treble/beat + theme). Each cell is a `▀`
 with 24-bit fg/bg, so the terminal must support truecolor. Colours come from the Omarchy theme at

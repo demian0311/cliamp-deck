@@ -9,85 +9,14 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-type tier int
-
-const (
-	tierXS tier = iota // two lines of track over the stage: a tmux split or status pane
-	tierS              // player / stage / sources stacked, the "quarter" size
-	tierM              // player and sources left, stage right
-	tierXL             // btop grid: player+sources · stage · levels+eq
-)
-
-func tierFor(w, h int) tier {
-	switch {
-	case w < 40 || h < 12:
-		return tierXS
-	case w < 72:
-		return tierS
-	case w < 150 || h < 34:
-		return tierM
-	}
-	return tierXL
-}
-
-type rect struct{ x, y, w, h int }
-
-func (r rect) inner() rect { return rect{r.x + 1, r.y + 1, max(0, r.w-2), max(0, r.h-2)} }
-
-// layout places every panel for the current size. Update uses it too, to size
-// the effect frame to the stage before rendering into it.
-type layout struct {
-	tier                   tier
-	full, mini             bool
-	player, sources, stage rect
-	levels, eq             rect
-	stageBoxed             bool
-}
-
-func (l layout) stageInner() rect {
-	if l.stageBoxed {
-		return l.stage.inner()
-	}
-	return l.stage
-}
-
-const playerH = 6
-
-func (m model) layout() layout {
-	W, body := m.w, m.h-1
-	l := layout{tier: tierFor(m.w, m.h), stageBoxed: true}
-	switch {
-	case m.full:
-		l.full, l.stageBoxed = true, false
-		l.stage = rect{0, 0, W, body}
-	case l.tier == tierXS:
-		l.mini, l.stageBoxed = true, false
-		l.stage = rect{0, 2, W, max(0, m.h-2)}
-	case l.tier == tierS:
-		sh := max(5, min(8, body*3/10))
-		l.player = rect{0, 0, W, playerH}
-		l.sources = rect{0, body - sh, W, sh}
-		l.stage = rect{0, playerH, W, max(0, body-sh-playerH)}
-	case l.tier == tierM:
-		lw := min(48, W*38/100)
-		l.player = rect{0, 0, lw, playerH}
-		l.sources = rect{0, playerH, lw, body - playerH}
-		l.stage = rect{lw, 0, W - lw, body}
-	default:
-		const lw, rw = 50, 40
-		l.player = rect{0, 0, lw, playerH}
-		l.sources = rect{0, playerH, lw, body - playerH}
-		l.stage = rect{lw, 0, W - lw - rw, body}
-		l.levels = rect{W - rw, 0, rw, body / 2}
-		l.eq = rect{W - rw, body / 2, rw, body - body/2}
-	}
-	return l
-}
-
 func (m model) View() tea.View {
 	v := tea.NewView(m.render())
 	v.AltScreen = true
 	v.WindowTitle = "cliamp-deck"
+	v.MouseMode = tea.MouseModeCellMotion
+	if m.take {
+		v.MouseMode = tea.MouseModeAllMotion // any movement brings the track bar back
+	}
 	return v
 }
 
@@ -101,44 +30,367 @@ func (m model) render() string {
 		g.put(max(0, (m.w-len([]rune(msg)))/2), m.h/2, fit(msg, m.w), cDim)
 		return g.String()
 	}
-	l := m.layout()
-	m.drawStage(g, l)
-	switch {
-	case l.full:
-		m.drawOverlay(g, m.h-1)
+	l := computeLayout(m.w, m.h, m.ls())
+	if !l.vis.empty() {
+		m.drawVisual(g, l)
+	}
+	switch l.shape {
+	case shapeTakeover:
+		if time.Since(m.lastAct) < barLinger {
+			m.drawTakeoverBar(g, m.h-1)
+		}
 		return g.String()
-	case l.mini:
-		m.drawTrackLines(g, 0, 0, m.w, 2)
-		return g.String()
+	case shapeMini:
+		if l.miniTitle >= 0 {
+			m.drawTitleLine(g, 0, 0, m.w)
+			m.drawTimeLine(g, 0, 1, m.w)
+		}
+	default:
+		m.drawPlayer(g, l.player)
+		if !l.eq.empty() {
+			m.drawEQ(g, l.eq)
+		}
 	}
-	m.drawPlayer(g, l.player)
-	if l.sources.h >= 3 {
-		m.drawSources(g, l.sources.x, l.sources.y, l.sources.w, l.sources.h)
+	if !l.sources.empty() {
+		m.drawSources(g, l.sources)
 	}
-	if l.levels.w > 0 {
-		m.drawLevels(g, l.levels.x, l.levels.y, l.levels.w, l.levels.h)
-		m.drawEQ(g, l.eq.x, l.eq.y, l.eq.w, l.eq.h)
-	}
-	m.drawStatus(g, m.h-1)
+	m.drawStatus(g, l.status)
 	return g.String()
 }
 
-func (m model) drawStage(g *grid, l layout) {
-	r := l.stage
-	if r.w < 2 || r.h < 1 {
+// frame draws a panel border, highlighted when the panel has keyboard focus.
+func (m model) drawFrame(g *grid, r rect, title string, c cls, area focusArea) {
+	if m.focus == area {
+		c = cFocus
+	}
+	g.box(r.x, r.y, r.w, r.h, title, c)
+}
+
+func (m model) drawVisual(g *grid, l layout) {
+	in := l.visInner()
+	if l.visBoxed {
+		m.drawFrame(g, l.vis, m.modeName(), cAmber, focusVis)
+		if prev, _ := visControls(l); !prev.empty() {
+			label := fmt.Sprintf("‹ %d/%d ›", m.mode+1, len(m.effects)+1)
+			g.put(prev.x-1, prev.y, " "+label+" ", cWhite)
+			g.paint(prev.x+2, prev.y, len([]rune(label))-4, cDim)
+		}
+	}
+	if in.empty() {
 		return
 	}
 	if m.mode == 0 {
-		m.drawSpectrum(g, r.x, r.y, r.w, r.h, l.stageBoxed)
+		m.drawSpectrum(g, in)
 		return
 	}
-	if l.stageBoxed {
-		g.box(r.x, r.y, r.w, r.h, "²stage · "+m.modeName(), cAmber)
-	}
-	in := l.stageInner()
 	if m.frame.W == in.w && m.frame.H == in.h*2 {
 		g.blit(in.x, in.y, m.frame)
 	}
+}
+
+func (m model) drawSpectrum(g *grid, r rect) {
+	dots, H := r.w*2, float64(r.h*4)
+	for cx := range r.w {
+		a := int(math.Round(sample(m.hi, cx*2, dots) * H))
+		b := int(math.Round(sample(m.hi, cx*2+1, dots) * H))
+		pa := int(math.Round(sample(m.pk.v, cx*2, dots) * H))
+		pb := int(math.Round(sample(m.pk.v, cx*2+1, dots) * H))
+		for row := range r.h {
+			ch := brailleCell(a, b, pa, pb, row)
+			if ch == 0x2800 {
+				continue
+			}
+			c := heightClass(float64(row) / float64(r.h))
+			if a <= row*4 && b <= row*4 {
+				c = cWhite // only peak caps in this cell
+			}
+			g.set(r.x+cx, r.y+r.h-1-row, ch, c)
+		}
+	}
+}
+
+func (m model) drawTakeoverBar(g *grid, y int) {
+	title, source := m.trackText()
+	glyph, gc := m.stateGlyph()
+	hint := fmt.Sprintf("‹ %s › · click or esc to return", m.modeName())
+	g.put(0, y, strings.Repeat(" ", g.w), cNone)
+	g.put(1, y, glyph, gc)
+	text := title
+	if source != "" {
+		text += " · " + source
+	}
+	room := max(1, g.w-5-len([]rune(hint)))
+	g.put(3, y, m.marquee(text, room), cWhite)
+	g.put(g.w-len([]rune(hint))-1, y, hint, cDim)
+}
+
+// drawPlayer rows: title with the level meter, source, time line, transport.
+func (m model) drawPlayer(g *grid, r rect) {
+	m.drawFrame(g, r, "player", cGreen, focusPlayer)
+	ix, iw, iy, ih := r.x+2, r.w-4, r.y+1, r.h-2
+	if iw < 4 || ih < 1 {
+		return
+	}
+	mw := 0
+	if iw > 34 {
+		mw = min(24, iw/4)
+		m.drawMeter(g, ix+iw-mw, iy, mw)
+	}
+	m.drawTitleLine(g, ix, iy, iw-mw-max(0, min(1, mw)))
+	if ih >= 2 {
+		_, source := m.trackText()
+		parts := []string{}
+		for _, p := range []string{source, m.modeLine()} {
+			if p != "" {
+				parts = append(parts, p)
+			}
+		}
+		g.put(ix+2, iy+1, fit(strings.Join(parts, " · "), iw-2), cCyan)
+	}
+	if ih >= 3 {
+		m.drawTimeLine(g, ix, iy+2, iw)
+	}
+	if ih >= 4 {
+		g.put(ix, iy+3, "◄◄  ►  ‖  ■  ►►", cWhite)
+		if vw := min(10, iw-28); vw > 3 {
+			n := int(math.Round(clamp01((m.snap.Volume+30)/36) * float64(vw)))
+			vol := fmt.Sprintf("vol %s%s %+.0fdB", strings.Repeat("▰", n), strings.Repeat("▱", vw-n), m.snap.Volume)
+			g.put(ix+iw-len([]rune(vol)), iy+3, vol, cCyan)
+		}
+	}
+}
+
+// drawMeter is a one-row braille level bar: two dot columns per cell, full
+// height, coloured by position. cliamp exposes one combined level, not L/R.
+func (m model) drawMeter(g *grid, x, y, w int) {
+	lvl := 0.0
+	if len(m.hist) > 0 {
+		lvl = clamp01(m.hist[len(m.hist)-1] * 2)
+	}
+	n := int(math.Round(lvl * float64(w*2)))
+	for i := range w {
+		ch, c := '⣀', cDim
+		switch {
+		case n > i*2+1:
+			ch, c = '⣿', heightClass(float64(i)/float64(w)*0.95)
+		case n > i*2:
+			ch, c = '⡇', heightClass(float64(i)/float64(w)*0.95)
+		}
+		g.set(x+i, y, ch, c)
+	}
+}
+
+var eqLabels = [10]string{"70", "180", "320", "600", "1k", "3k", "6k", "12k", "14k", "16k"}
+
+// eqColumns is the band column geometry, shared by drawing and mouse hits.
+func eqColumns(r rect) (x0, cw int) {
+	in := r.inner()
+	return in.x + 5, max(3, min(8, (in.w-6)/10))
+}
+
+// eqBandAt is the band under column x in the EQ panel, or -1.
+func eqBandAt(r rect, x int) int {
+	x0, cw := eqColumns(r)
+	if b := (x - x0) / cw; x >= x0 && b < 10 {
+		return b
+	}
+	return -1
+}
+
+func (m model) drawEQ(g *grid, r rect) {
+	preset := strings.ToLower(m.snap.EQPreset)
+	if preset == "" {
+		preset = "flat"
+	}
+	sel := 0.0
+	if m.eqBand < len(m.snap.EQBands) {
+		sel = m.snap.EQBands[m.eqBand]
+	}
+	g.box(r.x, r.y, r.w, r.h, fmt.Sprintf("eq · %s · %s Hz %+.0f dB · ←→ band ↑↓ gain p preset", preset, eqLabels[m.eqBand], sel), cFocus)
+	in := r.inner()
+	ih := in.h - 1 // last inner row holds the labels
+	if ih < 3 || in.w < 30 {
+		return
+	}
+	mid, half := in.y+ih/2, ih/2
+	x0, cw := eqColumns(r)
+	g.put(in.x+1, in.y, "+12", cDim)
+	g.put(in.x+2, mid, " 0", cDim)
+	g.put(in.x+1, in.y+ih-1, "-12", cDim)
+	g.put(x0, mid, strings.Repeat("┄", cw*10-1), cDim)
+	for i, lab := range eqLabels {
+		gain := 0.0
+		if i < len(m.snap.EQBands) {
+			gain = m.snap.EQBands[i]
+		}
+		cx := x0 + i*cw
+		// Bars in eighths of a row, so ±1 dB shows even on a short panel.
+		eighths := int(math.Round(math.Abs(gain) / 12 * float64(half*8)))
+		n := eighths / 8
+		for k := 1; k <= n; k++ {
+			if gain > 0 {
+				g.put(cx, mid-k, "██", heightClass(0.3+0.7*float64(k)/float64(max(1, half))))
+			} else {
+				g.put(cx, mid+k, "██", cCyan)
+			}
+		}
+		if part := eighths % 8; part > 0 {
+			if gain > 0 {
+				g.put(cx, mid-n-1, strings.Repeat(string([]rune(" ▁▂▃▄▅▆▇")[part]), 2), heightClass(0.3+0.7*float64(n+1)/float64(max(1, half))))
+			} else if part >= 4 {
+				g.put(cx, mid+n+1, "▀▀", cCyan)
+			} else {
+				g.put(cx, mid+n+1, "▔▔", cCyan)
+			}
+		}
+		if eighths == 0 { // a flat band gets a marker on the zero line
+			knob := cWhite
+			if i == m.eqBand {
+				knob = cKey
+			}
+			g.put(cx, mid, "▬▬", knob)
+		} else if i == m.eqBand {
+			for yy := in.y; yy < in.y+ih; yy++ { // the selected band's bar turns amber
+				if g.ch[yy*g.w+cx] != ' ' && g.ch[yy*g.w+cx] != '┄' {
+					g.paint(cx, yy, 2, cKey)
+				}
+			}
+		}
+		lc := cDim
+		if i == m.eqBand {
+			lc = cKey
+		}
+		g.put(cx, in.y+ih, lab, lc)
+	}
+}
+
+func (m model) drawSources(g *grid, r rect) {
+	focused := m.focus == focusSources
+	m.drawFrame(g, r, "", cYellow, focusSources)
+	for i, t := range tabRects(r) {
+		c := cDim
+		if i == m.tab {
+			c = cSel
+		}
+		if t.x+t.w < r.x+r.w-1 {
+			g.put(t.x, t.y, " "+tabNames[i]+" ", c)
+		}
+	}
+	ctx := ""
+	switch {
+	case m.tab != tabSources:
+	case m.inResults:
+		ctx = "search: " + m.query
+	case m.providerName != "":
+		ctx = m.providerName
+	}
+	if m.loading {
+		ctx += " …"
+	}
+	if ctx != "" {
+		tr := tabRects(r)
+		end := tr[tabCount-1].x + tr[tabCount-1].w + 1
+		if room := r.x + r.w - 2 - end; room > 4 {
+			g.put(end, r.y, fit(" "+ctx+" ", room), cWhite)
+		}
+	}
+	in := r.inner()
+	if m.tab == tabSources && m.searching {
+		g.put(in.x+1, in.y, fit("/ "+m.query+"█", in.w-2), cCyan)
+	} else if m.tab == tabSources && m.inResults {
+		g.put(in.x+1, in.y, fit("/ "+m.query+"   esc to go back", in.w-2), cDim)
+	}
+	rows := m.listRows(r)
+	list := m.lists[m.tab]
+	if rows.h <= 0 {
+		return
+	}
+	if len(list.rows) == 0 {
+		empty := map[int]string{tabSources: "no sources yet", tabQueue: "queue is empty", tabHistory: "nothing played yet"}[m.tab]
+		g.put(rows.x+1, rows.y, fit(empty, rows.w-2), cDim)
+		return
+	}
+	start := listStart(len(list.rows), list.sel, rows.h)
+	for i := 0; i < rows.h && start+i < len(list.rows); i++ {
+		it := list.rows[start+i]
+		y := rows.y + i
+		mark, c := "  ", cNone
+		switch {
+		case it.kind == rowHeader:
+			line := []rune("── " + it.label + " " + strings.Repeat("─", max(0, rows.w)))
+			g.put(rows.x+1, y, string(line[:max(0, min(len(line), rows.w-2))]), cDim)
+			continue
+		case it.kind == rowSetup:
+			c = cDim
+		case it.current:
+			mark, c = "► ", cGreen
+		}
+		right := it.right
+		if len([]rune(right)) > rows.w/3 {
+			right = ""
+		}
+		left := " " + mark + it.label
+		width := rows.w - len([]rune(right)) - 1
+		line := fit(left, width)
+		line += strings.Repeat(" ", max(0, width-len([]rune(line)))) + right + " "
+		if start+i == list.sel && focused {
+			c = cSel
+		}
+		g.put(rows.x, y, line, c)
+		if c != cSel && right != "" {
+			g.paint(rows.x+width, y, len([]rune(right)), cDim)
+		}
+	}
+	if n := len(list.rows); n > rows.h {
+		pos := fmt.Sprintf(" %d/%d ", list.sel+1, n)
+		g.put(r.x+r.w-len(pos)-2, r.y+r.h-1, pos, cDim)
+	}
+}
+
+func (m model) drawStatus(g *grid, y int) {
+	if y < 0 {
+		return
+	}
+	right := "● cliamp"
+	rc := cGreen
+	if !m.online {
+		right, rc = "○ cliamp offline", cRed
+	}
+	room := g.w - len([]rune(right)) - 3
+	if m.note != "" && time.Since(m.noteAt) < 5*time.Second {
+		g.put(1, y, fit(m.note, room), cYellow)
+	} else {
+		x := 1
+		for _, k := range m.hints() {
+			seg := len([]rune(k[0])) + 1 + len([]rune(k[1])) + 2
+			if x+seg > room {
+				break
+			}
+			g.put(x, y, k[0], cKey)
+			g.put(x+len([]rune(k[0]))+1, y, k[1], cDim)
+			x += seg
+		}
+	}
+	g.put(g.w-len([]rune(right))-1, y, right, rc)
+}
+
+// hints are the status-line keys for what currently has focus.
+func (m model) hints() [][2]string {
+	switch {
+	case m.searching:
+		return [][2]string{{"⏎", "search"}, {"esc", "cancel"}}
+	case m.eqOpen:
+		return [][2]string{{"←→", "band"}, {"↑↓", "gain"}, {"p", "preset"}, {"e", "close"}}
+	case m.focus == focusSources:
+		keys := [][2]string{{"↑↓", "move"}, {"⏎", "play"}, {"a", "queue"}, {"A", "play next"}, {"[ ]", "tabs"}, {"/", "search"}}
+		if r, ok := m.selected(); ok && r.kind == rowSetup {
+			keys = [][2]string{{"s", "connect"}, {"↑↓", "move"}, {"[ ]", "tabs"}}
+		}
+		return append(keys, [2]string{"esc", "back"}, [2]string{"tab", "focus"})
+	case m.focus == focusVis:
+		return [][2]string{{"←→", "visual"}, {"⏎", "take over"}, {"␣", "play"}, {"e", "eq"}, {"/", "search"}, {"tab", "focus"}, {"q", "quit"}}
+	}
+	return [][2]string{{"␣", "play"}, {"n/p", "skip"}, {"←→", "seek"}, {"+/-", "vol"}, {"v", "visual"}, {"e", "eq"}, {"tab", "focus"}, {"q", "quit"}}
 }
 
 func (m model) trackText() (title, source string) {
@@ -246,49 +498,6 @@ func (m model) drawTimeLine(g *grid, x, y, w int) {
 }
 
 // drawPlayer rows: title, source, time, transport.
-func (m model) drawPlayer(g *grid, r rect) {
-	g.box(r.x, r.y, r.w, r.h, "¹player", cGreen)
-	ix, iw, iy, ih := r.x+2, r.w-4, r.y+1, r.h-2
-	if iw < 4 || ih < 1 {
-		return
-	}
-	m.drawTitleLine(g, ix, iy, iw)
-	if ih >= 2 {
-		_, source := m.trackText()
-		parts := []string{}
-		for _, p := range []string{source, m.modeLine()} {
-			if p != "" {
-				parts = append(parts, p)
-			}
-		}
-		g.put(ix+2, iy+1, fit(strings.Join(parts, " · "), iw-2), cCyan)
-	}
-	if ih >= 3 {
-		m.drawTimeLine(g, ix, iy+2, iw)
-	}
-	if ih >= 4 {
-		g.put(ix, iy+3, "◄◄  ►  ‖  ■  ►►", cWhite)
-		if vw := min(10, iw-28); vw > 3 {
-			n := int(math.Round(clamp01((m.snap.Volume+30)/36) * float64(vw)))
-			vol := fmt.Sprintf("vol %s%s %+.0fdB", strings.Repeat("▰", n), strings.Repeat("▱", vw-n), m.snap.Volume)
-			g.put(ix+iw-len([]rune(vol)), iy+3, vol, cCyan)
-		}
-	}
-}
-
-func (m model) drawOverlay(g *grid, y int) {
-	glyph, gc := m.stateGlyph()
-	title, source := m.trackText()
-	hint := "  v " + m.modeName() + " · V exit"
-	g.put(1, y, glyph, gc)
-	text := title
-	if source != "" {
-		text += " · " + source
-	}
-	room := max(1, g.w-4-len([]rune(hint)))
-	g.put(3, y, m.marquee(text, room), cWhite)
-	g.put(g.w-len([]rune(hint))-1, y, hint, cDim)
-}
 
 func (m model) modeLine() string {
 	parts := []string{}
@@ -328,213 +537,4 @@ func heightClass(frac float64) cls {
 		return cAmber
 	}
 	return cRed
-}
-
-func (m model) drawSpectrum(g *grid, x, y, w, h int, boxed bool) {
-	ix, iy, iw, ih := x, y, w, h
-	if boxed {
-		g.box(x, y, w, h, "²spectrum", cAmber)
-		ix, iy, iw, ih = x+2, y+1, w-4, h-2
-		if axis := "70 · 320 · 1k · 6k · 16k Hz"; w > len([]rune(axis))+20 {
-			g.put(x+w-len([]rune(axis))-3, y+h-1, axis, cDim)
-		}
-	}
-	if iw < 1 || ih < 1 {
-		return
-	}
-	dots, H := iw*2, float64(ih*4)
-	for cx := range iw {
-		a := int(math.Round(sample(m.hi, cx*2, dots) * H))
-		b := int(math.Round(sample(m.hi, cx*2+1, dots) * H))
-		pa := int(math.Round(sample(m.pk.v, cx*2, dots) * H))
-		pb := int(math.Round(sample(m.pk.v, cx*2+1, dots) * H))
-		for r := range ih {
-			ch := brailleCell(a, b, pa, pb, r)
-			if ch == 0x2800 {
-				continue
-			}
-			c := heightClass(float64(r) / float64(ih))
-			if a <= r*4 && b <= r*4 {
-				c = cWhite // only peak caps in this cell
-			}
-			g.set(ix+cx, iy+ih-1-r, ch, c)
-		}
-	}
-}
-
-// drawGraph plots a scrolling history as a filled braille area, newest right.
-func drawGraph(g *grid, x, y, w, h int, data []float64, gain float64) {
-	if w < 1 || h < 1 {
-		return
-	}
-	need := w * 2
-	d := make([]float64, need)
-	if len(data) > need {
-		data = data[len(data)-need:]
-	}
-	copy(d[need-len(data):], data)
-	H := float64(h * 4)
-	for cx := range w {
-		a := int(math.Round(clamp01(d[cx*2]*gain) * H))
-		b := int(math.Round(clamp01(d[cx*2+1]*gain) * H))
-		for r := range h {
-			if ch := brailleCell(a, b, 0, 0, r); ch != 0x2800 {
-				g.set(x+cx, y+h-1-r, ch, heightClass(float64(r)/float64(h)))
-			}
-		}
-	}
-}
-
-func (m model) drawLevels(g *grid, x, y, w, h int) {
-	g.box(x, y, w, h, "⁵levels", cMagenta)
-	ix, iw, iy, ih := x+2, w-4, y+1, h-2
-	if iw < 8 || ih < 1 {
-		return
-	}
-	lvl := 0.0
-	if len(m.hist) > 0 {
-		lvl = clamp01(m.hist[len(m.hist)-1] * 2)
-	}
-	mw := iw - 2
-	n := int(math.Round(lvl * float64(mw)))
-	g.put(ix, iy, "▕", cDim)
-	g.put(ix+1, iy, strings.Repeat("█", n), heightClass(lvl*0.95))
-	g.put(ix+1+n, iy, strings.Repeat("░", mw-n), cDim)
-	if ih > 2 {
-		drawGraph(g, ix, iy+2, iw, ih-2, m.hist, 2)
-	}
-}
-
-var eqLabels = [10]string{"70", "180", "320", "600", "1k", "3k", "6k", "12k", "14k", "16k"}
-
-func (m model) drawEQ(g *grid, x, y, w, h int) {
-	title := "³eq"
-	if m.snap.EQPreset != "" {
-		title += " · " + strings.ToLower(m.snap.EQPreset)
-	}
-	g.box(x, y, w, h, title, cCyan)
-	ix, iw, iy, ih := x+2, w-4, y+1, h-3
-	if ih < 3 || iw < 30 {
-		return
-	}
-	mid, half := iy+ih/2, ih/2
-	cw := max(3, (iw-4)/len(eqLabels))
-	g.put(ix, iy, "+12", cDim)
-	g.put(ix+1, mid, " 0", cDim)
-	g.put(ix, iy+ih-1, "-12", cDim)
-	g.put(ix+4, mid, strings.Repeat("┄", min(iw-4, cw*len(eqLabels))), cDim)
-	for i, lab := range eqLabels {
-		gain := 0.0
-		if i < len(m.snap.EQBands) {
-			gain = m.snap.EQBands[i]
-		}
-		cx := ix + 4 + i*cw + (cw-2)/2
-		n := int(math.Round(math.Abs(gain) / 12 * float64(half)))
-		for k := 1; k <= n; k++ {
-			if gain > 0 {
-				g.put(cx, mid-k, "██", heightClass(0.3+0.7*float64(k)/float64(half)))
-			} else {
-				g.put(cx, mid+k, "██", cCyan)
-			}
-		}
-		if gain >= 0 {
-			g.put(cx, mid-n-1, "▬▬", cWhite)
-		} else {
-			g.put(cx, mid+n+1, "▬▬", cWhite)
-		}
-		if cw >= 4 || i%2 == 0 { // three-cell columns can't fit ten 3-char labels
-			g.put(ix+4+i*cw+max(0, (cw-len(lab))/2), iy+ih, lab, cDim)
-		}
-	}
-}
-
-func (m model) drawSources(g *grid, x, y, w, h int) {
-	title := "⁴sources"
-	name := ""
-	if m.provider != "" {
-		name = m.provider
-		for _, p := range m.providers {
-			if p.Key == m.provider {
-				name = p.Name
-			}
-		}
-		title += " › " + name
-	}
-	if m.loading {
-		title += " …"
-	}
-	g.box(x, y, w, h, title, cYellow)
-	ix, iw, iy, ih := x+1, w-2, y+1, h-2
-	if ih < 1 || iw < 6 {
-		return
-	}
-	if len(m.items) == 0 {
-		g.put(ix+1, iy, fit("no sources yet", iw-1), cDim)
-		return
-	}
-	n := len(m.items)
-	start := 0
-	if n > ih {
-		start = max(0, min(n-ih, m.sel-ih/2))
-	}
-	playing := m.snap.Playlist
-	for r := 0; r < min(ih, n); r++ {
-		i := start + r
-		it := m.items[i]
-		on := (m.provider == "" && strings.HasPrefix(playing, it.key+":")) ||
-			(m.provider != "" && playing == m.provider+":"+it.key)
-		mark := "  "
-		if on {
-			mark = "► "
-		}
-		right := ""
-		if it.section != "" && iw > 50 {
-			right = it.section + " "
-		}
-		left := " " + mark + fit(it.name, max(1, iw-3-len([]rune(right))-1))
-		line := left + strings.Repeat(" ", max(0, iw-len([]rune(left))-len([]rune(right)))) + right
-		c := cNone
-		if i == m.sel {
-			c = cSel
-		}
-		g.put(ix, iy+r, line, c)
-		if i != m.sel {
-			if on {
-				g.paint(ix, iy+r, iw, cGreen)
-			}
-			g.paint(ix+iw-len([]rune(right)), iy+r, len([]rune(right)), cDim)
-		}
-	}
-	if n > ih {
-		th := max(1, ih*ih/n)
-		tp := start * (ih - th) / (n - ih)
-		for k := range th {
-			g.set(x+w-1, iy+tp+k, '┃', cYellow)
-		}
-	}
-}
-
-func (m model) drawStatus(g *grid, y int) {
-	right := "● cliamp"
-	rc := cGreen
-	if !m.online {
-		right, rc = "○ cliamp offline", cRed
-	}
-	room := g.w - len([]rune(right)) - 2
-	if m.note != "" && time.Since(m.noteAt) < 5*time.Second {
-		g.put(1, y, fit(m.note, room), cYellow)
-	} else {
-		keys := [][2]string{{"␣", "play"}, {"n/p", "skip"}, {"←→", "seek"}, {"+/-", "vol"}, {"v", "fx"}, {"V", "full"}, {"⏎", "open"}, {"esc", "back"}, {"q", "quit"}}
-		x := 1
-		for _, k := range keys {
-			seg := len([]rune(k[0])) + 1 + len([]rune(k[1])) + 2
-			if x+seg > room {
-				break
-			}
-			g.put(x, y, k[0], cKey)
-			g.put(x+len([]rune(k[0]))+1, y, k[1], cDim)
-			x += seg
-		}
-	}
-	g.put(g.w-len([]rune(right))-1, y, right, rc)
 }

@@ -115,6 +115,18 @@ func (c client) playlists(provider string) ([]ipc.PlaylistInfo, error) {
 	return r.Playlists, err
 }
 
+// catalog loads the next page of a paged catalog (Radio's station directory)
+// and returns every entry loaded so far, plus how many the page added.
+func (c client) catalog(provider string, offset, limit int) ([]ipc.PlaylistInfo, int, error) {
+	raw, err := c.op("provider.catalog", map[string]any{"provider": provider, "offset": offset, "limit": limit})
+	if err != nil {
+		return nil, 0, err
+	}
+	var r ipc.Response
+	err = json.Unmarshal(raw, &r)
+	return r.Playlists, r.Total, err
+}
+
 func (c client) alive() bool {
 	_, err := c.state()
 	return err == nil

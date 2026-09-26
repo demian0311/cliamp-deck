@@ -1,8 +1,12 @@
 package main
 
 import (
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/bjarneo/cliamp/ipc"
 )
@@ -42,47 +46,229 @@ func TestBrailleCell(t *testing.T) {
 	}
 }
 
-func TestTiers(t *testing.T) {
+func TestLayoutShapes(t *testing.T) {
 	cases := []struct {
 		w, h int
-		want tier
-	}{{38, 6, tierXS}, {60, 24, tierS}, {90, 40, tierM}, {130, 38, tierM}, {170, 30, tierM}, {170, 44, tierXL}}
+		want shape
+	}{{200, 58, shapeStack}, {100, 58, shapeStack}, {100, 28, shapeStack}, {60, 24, shapeStack},
+		{280, 58, shapeSide}, {50, 20, shapeMini}, {100, 12, shapeMini}}
 	for _, c := range cases {
-		if got := tierFor(c.w, c.h); got != c.want {
-			t.Errorf("tierFor(%d,%d) = %d, want %d", c.w, c.h, got, c.want)
+		if got := computeLayout(c.w, c.h, layoutState{}).shape; got != c.want {
+			t.Errorf("%dx%d: shape %d, want %d", c.w, c.h, got, c.want)
 		}
+	}
+	if l := computeLayout(100, 28, layoutState{take: true}); l.shape != shapeTakeover || l.vis != (rect{0, 0, 100, 28}) {
+		t.Errorf("takeover: %+v", l)
 	}
 }
 
-// Every tier, stage mode and fullscreen must fill exactly w×h cells: no panel
-// or pixel run may spill past the edge.
-func TestRenderFitsEveryTier(t *testing.T) {
+// The stack splits spare rows 60/40, the list grows while focused, and an
+// open EQ takes its rows from the visualizer.
+func TestStackHeights(t *testing.T) {
+	base := computeLayout(100, 58, layoutState{})
+	if base.player.h != 6 || base.vis.h+base.sources.h != 57-6 {
+		t.Fatalf("heights %+v", base)
+	}
+	if base.vis.h <= base.sources.h {
+		t.Errorf("visualizer %d should out-size sources %d", base.vis.h, base.sources.h)
+	}
+	grown := computeLayout(100, 58, layoutState{focus: focusSources})
+	if grown.sources.h <= base.sources.h || grown.vis.h >= base.vis.h {
+		t.Errorf("focused list did not grow: %d→%d", base.sources.h, grown.sources.h)
+	}
+	eq := computeLayout(100, 58, layoutState{eqOpen: true})
+	if eq.eq.h != 10 || eq.eq.y != 6 || eq.sources.h < base.sources.h-1 || eq.vis.h >= base.vis.h {
+		t.Errorf("eq open: %+v", eq)
+	}
+	side := computeLayout(280, 58, layoutState{})
+	if side.vis.x != side.player.w || side.vis.h != 57 || side.sources.w != side.player.w {
+		t.Errorf("side: %+v", side)
+	}
+}
+
+func testModel(t *testing.T) model {
+	t.Helper()
 	shuffle := false
-	m := newModel(client{sock: "/nonexistent"}, "/nonexistent/colors.toml")
+	m := newModel(client{sock: "/nonexistent"}, "/nonexistent/colors.toml", filepath.Join(t.TempDir(), "state.toml"))
 	m.snap = &ipc.RuntimeSnapshot{State: "playing", Position: 107, Duration: 151, Volume: -4, Shuffle: &shuffle,
-		EQPreset: "Rock", EQBands: []float64{5, 4, 1, -1, -2, -1, 2, 4, 5, 5},
+		EQPreset: "Rock", EQBands: []float64{5, 4, 2, -1, -2, 2, 4, 5, 5, 5}, Playlist: "radio:c:3",
 		Track: &ipc.TrackInfo{Title: "Roygbiv", Artist: "Boards of Canada", Album: "Music Has the Right to Children"}}
-	m.providers = []ipc.ProviderInfo{{Key: "radio", Name: "Radio"}, {Key: "local", Name: "Local"}}
-	m.showProviders()
+	m.providers = []ipc.ProviderInfo{{Key: "radio", Name: "Radio", Searchable: true}, {Key: "local", Name: "Local"}}
+	m.lists[tabSources].rows = m.topRows()
+	m.w, m.h = 100, 28
+	return m
+}
+
+func upd(m model, msg tea.Msg) model {
+	next, _ := m.Update(msg)
+	return next.(model)
+}
+
+// Every shape, visualizer, focus and panel combination fills exactly w×h cells.
+func TestRenderFitsEverywhere(t *testing.T) {
+	m := testModel(t)
 	bands := specMsg{[]float64{.9, .8, .6, .7, .5, .4, .3, .2, .1, .05}}
+	sizes := [][2]int{{280, 58}, {200, 58}, {100, 58}, {100, 28}, {60, 24}, {50, 20}, {38, 6}, {28, 3}}
 	for mode := 0; mode <= len(m.effects); mode++ {
-		for _, full := range []bool{false, true} {
-			m.mode, m.full = mode, full
-			for _, sz := range [][2]int{{210, 52}, {170, 44}, {130, 38}, {90, 40}, {60, 24}, {38, 6}, {28, 3}} {
+		for _, st := range []layoutState{{}, {focus: focusSources}, {eqOpen: true}, {take: true}, {focus: focusPlayer, eqOpen: true}} {
+			m.mode, m.take, m.eqOpen, m.focus = mode, st.take, st.eqOpen, st.focus
+			for _, sz := range sizes {
 				m.w, m.h = sz[0], sz[1]
-				next, _ := m.Update(bands)
-				mm := next.(model)
+				mm := upd(m, bands)
 				lines := strings.Split(stripANSI(mm.render()), "\n")
 				if len(lines) != sz[1] {
-					t.Fatalf("mode %d full %v %dx%d: %d lines", mode, full, sz[0], sz[1], len(lines))
+					t.Fatalf("mode %d %+v %dx%d: %d lines", mode, st, sz[0], sz[1], len(lines))
 				}
 				for i, l := range lines {
 					if n := len([]rune(l)); n != sz[0] {
-						t.Fatalf("mode %d full %v %dx%d: line %d is %d cells", mode, full, sz[0], sz[1], i, n)
+						t.Fatalf("mode %d %+v %dx%d: line %d is %d cells", mode, st, sz[0], sz[1], i, n)
 					}
 				}
 			}
 		}
+	}
+}
+
+func key(m model, k string) model {
+	next, _ := m.key(k)
+	return next.(model)
+}
+
+func TestFocusAndVisualizerKeys(t *testing.T) {
+	m := testModel(t)
+	if m.focus != focusVis {
+		t.Fatalf("starts focused on %d", m.focus)
+	}
+	m = key(m, "tab")
+	if m.focus != focusSources {
+		t.Fatalf("tab → %d", m.focus)
+	}
+	m = key(key(m, "shift+tab"), "shift+tab")
+	if m.focus != focusPlayer {
+		t.Fatalf("shift+tab twice → %d", m.focus)
+	}
+	m = key(m, "tab") // visualizer
+	mode := m.mode
+	if m = key(m, "right"); m.mode != mode+1 {
+		t.Errorf("→ on the visualizer did not cycle: %d", m.mode)
+	}
+	if m = key(m, "left"); m.mode != mode {
+		t.Errorf("← did not cycle back")
+	}
+	if m = key(m, "enter"); !m.take {
+		t.Fatal("enter on the visualizer did not take over")
+	}
+	if m = key(m, "right"); m.mode != mode+1 {
+		t.Errorf("→ in takeover did not cycle")
+	}
+	if m = key(m, "esc"); m.take {
+		t.Error("esc did not leave takeover")
+	}
+	if m = key(m, "V"); !m.take {
+		t.Error("V did not take over")
+	}
+	if got := loadState(m.statePath).Visualizer; got != m.modeName() {
+		t.Errorf("saved visualizer %q, showing %q", got, m.modeName())
+	}
+}
+
+func click(m model, x, y int) model {
+	next, _ := m.click(tea.Mouse{X: x, Y: y, Button: tea.MouseLeft})
+	return next.(model)
+}
+
+func TestMouseTakeoverControlsAndRows(t *testing.T) {
+	m := testModel(t)
+	l := computeLayout(m.w, m.h, m.ls())
+	prev, next := visControls(l)
+	mode := m.mode
+	if m = click(m, next.x, next.y); m.mode != mode+1 || m.take {
+		t.Fatalf("› cycled to %d, take=%v", m.mode, m.take)
+	}
+	if m = click(m, prev.x, prev.y); m.mode != mode {
+		t.Fatalf("‹ went to %d", m.mode)
+	}
+	c := l.vis.inner()
+	if m = click(m, c.x+c.w/2, c.y+c.h/2); !m.take {
+		t.Fatal("clicking the visualizer did not take over")
+	}
+	if m = click(m, 3, 3); m.take {
+		t.Fatal("a click in takeover did not return")
+	}
+	src := computeLayout(m.w, m.h, m.ls()).sources
+	rows := m.listRows(src)
+	m = click(m, rows.x+3, rows.y+1)
+	if m.focus != focusSources || m.lists[tabSources].sel != 1 {
+		t.Fatalf("row click: focus %d sel %d", m.focus, m.lists[tabSources].sel)
+	}
+	tabs := tabRects(computeLayout(m.w, m.h, m.ls()).sources)
+	if m = click(m, tabs[tabHistory].x+1, tabs[tabHistory].y); m.tab != tabHistory {
+		t.Errorf("tab click → %d", m.tab)
+	}
+}
+
+func TestDoubleClickActivatesOnlyOnceFocused(t *testing.T) {
+	m := testModel(t)
+	rowsAt := func(m model) rect { return m.listRows(computeLayout(m.w, m.h, m.ls()).sources) }
+	r := rowsAt(m)
+	m = click(m, r.x+3, r.y) // focuses the list; the layout reflows
+	r = rowsAt(m)
+	m = click(m, r.x+3, r.y)
+	next, cmd := m.click(tea.Mouse{X: r.x + 3, Y: r.y, Button: tea.MouseLeft})
+	if cmd == nil || !next.(model).loading {
+		t.Fatal("double-click on a focused row did not open it")
+	}
+}
+
+func TestUnconfiguredSourcesSitAtTheBottom(t *testing.T) {
+	m := testModel(t)
+	rows := m.lists[tabSources].rows
+	if rows[0].kind != rowProvider || rows[1].kind != rowProvider || rows[2].kind != rowHeader {
+		t.Fatalf("top of list: %+v", rows[:3])
+	}
+	for _, r := range rows[3:] {
+		if r.kind != rowSetup {
+			t.Errorf("after the header: %+v", r)
+		}
+	}
+	if !rows[0].current {
+		t.Error("the provider playing now is not marked")
+	}
+	m.providers = append(m.providers, ipc.ProviderInfo{Key: "ytmusic", Name: "YouTube Music"})
+	for _, r := range m.topRows() {
+		if r.kind == rowSetup && r.label == "YouTube Music" {
+			t.Error("configured YouTube Music still offered for setup")
+		}
+	}
+}
+
+func TestStateRoundTrip(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "d", "state.toml")
+	want := deckState{Visualizer: "tunnel", EQPreset: "Custom", EQBands: []float64{1, -2.5, 0, 0, 3, 0, 0, 0, 0, 12}}
+	if err := saveState(p, want); err != nil {
+		t.Fatal(err)
+	}
+	if got := loadState(p); got.Visualizer != want.Visualizer || got.EQPreset != want.EQPreset || !slices.Equal(got.EQBands, want.EQBands) {
+		t.Errorf("got %+v", got)
+	}
+	if got := loadState(filepath.Join(t.TempDir(), "missing")); got.Visualizer != "" {
+		t.Errorf("missing file: %+v", got)
+	}
+}
+
+func TestEQPanelKeys(t *testing.T) {
+	m := testModel(t)
+	if m = key(m, "e"); !m.eqOpen {
+		t.Fatal("e did not open the EQ")
+	}
+	if m = key(key(m, "right"), "right"); m.eqBand != 2 {
+		t.Errorf("band %d", m.eqBand)
+	}
+	if _, cmd := m.key("up"); cmd == nil {
+		t.Error("↑ sent no EQ change")
+	}
+	if m = key(m, "esc"); m.eqOpen {
+		t.Error("esc did not close the EQ")
 	}
 }
 
