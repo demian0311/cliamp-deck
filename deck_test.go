@@ -383,32 +383,33 @@ func TestRadioCountriesOpenWithArrows(t *testing.T) {
 	}
 }
 
-// In the player, → opens the EQ and ← past its first band returns; tab still
-// moves focus with the EQ open, and the focused panel's title turns negative.
-func TestPlayerArrowsOpenAndLeaveTheEQ(t *testing.T) {
+// e shows and hides the EQ; while shown it takes the player's arrows, and tab
+// still moves focus. The focused panel's title turns negative.
+func TestEKeyTogglesTheEQ(t *testing.T) {
 	m := testModel(t)
-	m.focus = focusPlayer
-	m = key(m, "right")
-	if !m.eqFocused() || m.eqBand != 0 {
-		t.Fatal("→ in the player did not open the EQ")
-	}
-	m = key(key(m, "right"), "left")
-	if !m.eqOpen || m.eqBand != 0 {
-		t.Fatalf("band %d after → ←", m.eqBand)
+	m.focus = focusVis
+	m = key(m, "e")
+	if !m.eqFocused() {
+		t.Fatal("e did not open and focus the EQ")
 	}
 	m = key(m, "left")
-	if m.eqOpen {
-		t.Fatal("← on the first band did not return to the player")
+	if !m.eqOpen || m.eqBand != 9 {
+		t.Fatalf("← from the first band: open %v, band %d", m.eqOpen, m.eqBand)
 	}
-	m = key(key(m, "right"), "tab")
-	if m.focus != focusVis || !m.eqOpen {
+	m = key(m, "tab")
+	if m.focus != focusVis || !m.eqOpen || m.eqFocused() {
 		t.Fatalf("tab with the EQ open: focus %d, open %v", m.focus, m.eqOpen)
-	}
-	if m.eqFocused() {
-		t.Error("the EQ still takes keys after focus left the player")
 	}
 	if !m.has(focusVis) || m.has(focusPlayer) {
 		t.Error("focus highlight is on the wrong panel")
+	}
+	m = key(m, "e")
+	if !m.eqFocused() {
+		t.Fatal("e from another panel did not bring focus back to the EQ")
+	}
+	m = key(m, "e")
+	if m.eqOpen {
+		t.Fatal("e did not hide the EQ")
 	}
 }
 

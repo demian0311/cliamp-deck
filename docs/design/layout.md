@@ -27,7 +27,7 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
 - Tab / Shift-Tab cycles focus: player → visualizer → sources. The focused frame is highlighted and its title drawn
   negative; the sources panel's active tab is negative only while it has focus. The open EQ belongs to player focus:
   it takes the keys (and the highlight) while the player has focus, and tab leaves it open.
-- Player: `↑↓` volume ±2 dB, `→` opens the EQ at its first band. Seek is `,` `.` (±5 s) from anywhere.
+- Player: `↑↓` volume ±2 dB, `←→` seek ±5 s (also `,` `.` from anywhere).
 - Sources: tabs `sources | queue | history` (`[` `]` or click a tab). `↑↓`/wheel move (skipping headers); `→`/`l` opens a source or country, `←`/`h` goes back a level (esc too) — Radio lists pinned entries then countries (most stations first, ties alphabetical), a country lists its stations with bitrate in the dim right column; Enter plays now (replaces
   queue; `track.play`); `a` append to the end of the live playlist (`queue`, by path); `A` play next
   (`track.queue` for a supplied track, `queue.enqueue` for one already in the live playlist). Checked against
@@ -35,7 +35,7 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
 - `/` searches the current source; at the top level it searches all configured sources, results grouped by source.
 - Mouse now: visualizer (takeover, `‹ ›`), source rows (click select, double-click play, wheel scroll), tabs.
   Later: transport buttons and a clickable seek bar. Bubble Tea v2: set `View.MouseMode` (cell motion).
-- `e` toggles the EQ under the player (and focuses the player): `←→` band, `←` past the first band closes it,
+- `e` toggles the EQ under the player (and focuses the player) — the only way in or out: `←→` band (wraps),
   `↑↓` gain ±1 dB (±12), `p` next preset (cliamp's 16 built-ins), `0` Flat (EQ off), `e`/Esc close. Applied live through the `eq` operation (name | band + value).
 
 ## Player

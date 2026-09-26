@@ -252,7 +252,7 @@ func (m model) drawEQ(g *grid, r rect) {
 	if m.eqFocused() {
 		c, tc = cFocus, cSel
 	}
-	g.box(r.x, r.y, r.w, r.h, fmt.Sprintf("eq · %s · %s Hz %+.0f dB · ←→ band ↑↓ gain p preset 0 off", preset, eqLabels[m.eqBand], sel), c, tc)
+	g.box(r.x, r.y, r.w, r.h, fmt.Sprintf("eq · %s · %s Hz %+.0f dB · ←→ band ↑↓ gain p preset 0 off e close", preset, eqLabels[m.eqBand], sel), c, tc)
 	in := r.inner()
 	ih := in.h - 1 // last inner row holds the labels
 	if ih < 3 || in.w < 30 {
@@ -439,7 +439,7 @@ func (m model) hints() [][2]string {
 	case m.searching:
 		return [][2]string{{"⏎", "search"}, {"esc", "cancel"}}
 	case m.eqFocused():
-		return [][2]string{{"←→", "band"}, {"↑↓", "gain"}, {"p", "preset"}, {"0", "off"}, {"esc", "player"}, {"tab", "focus"}}
+		return [][2]string{{"←→", "band"}, {"↑↓", "gain"}, {"p", "preset"}, {"0", "off"}, {"e", "close"}, {"tab", "focus"}}
 	case m.focus == focusSources:
 		keys := [][2]string{{"↑↓", "move"}, {"→", "open"}, {"←", "back"}, {"⏎", "play"}, {"a", "queue"}, {"A", "play next"}, {"[ ]", "tabs"}, {"/", "search"}}
 		if r, ok := m.selected(); ok && r.kind == rowSetup {
@@ -450,9 +450,9 @@ func (m model) hints() [][2]string {
 		return [][2]string{{"←→", "visual"}, {"⏎", "take over"}, {"␣", "play"}, {"e", "eq"}, {"/", "search"}, {"tab", "focus"}, {"q", "quit"}}
 	}
 	if m.live() {
-		return [][2]string{{"␣", "play"}, {"↑↓", "vol"}, {"→", "eq"}, {"v", "visual"}, {"tab", "focus"}, {"q", "quit"}}
+		return [][2]string{{"␣", "play"}, {"↑↓", "vol"}, {"e", "eq"}, {"v", "visual"}, {"tab", "focus"}, {"q", "quit"}}
 	}
-	return [][2]string{{"␣", "play"}, {"↑↓", "vol"}, {"→", "eq"}, {"n/p", "skip"}, {", .", "seek"}, {"v", "visual"}, {"tab", "focus"}, {"q", "quit"}}
+	return [][2]string{{"␣", "play"}, {"↑↓", "vol"}, {"←→", "seek"}, {"e", "eq"}, {"n/p", "skip"}, {"v", "visual"}, {"tab", "focus"}, {"q", "quit"}}
 }
 
 func (m model) trackText() (title, source string) {

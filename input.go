@@ -35,14 +35,10 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 	if m.eqFocused() && k != "tab" && k != "shift+tab" {
 		switch k {
 		case "left", "h":
-			if m.eqBand == 0 { // past the first band is back to the player
-				m.eqOpen = false
-				return m, nil
-			}
-			m.eqBand--
+			m.eqBand = (m.eqBand + 9) % 10
 			return m, nil
 		case "right", "l":
-			m.eqBand = min(9, m.eqBand+1)
+			m.eqBand = (m.eqBand + 1) % 10
 			return m, nil
 		case "up", "k":
 			cmd := m.setEQBand(m.eqBand, 1)
@@ -73,8 +69,8 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 	case "V":
 		m.take = true
 		return m, nil
-	case "e":
-		m.eqOpen, m.focus = !m.eqOpen, focusPlayer
+	case "e": // shows the EQ (or returns to it); inside it, e hides it
+		m.eqOpen, m.focus = true, focusPlayer
 		return m, nil
 	case "/":
 		m.focus, m.tab, m.searching, m.query = focusSources, tabSources, true, ""
@@ -94,10 +90,9 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			return m, m.run("", "volume.adjust", map[string]float64{"value": -2})
 		case "right", "l":
-			m.eqOpen, m.eqBand = true, 0
-			return m, nil
+			return m, m.run("", "seek", map[string]float64{"value": 5})
 		case "left", "h":
-			return m, nil
+			return m, m.run("", "seek", map[string]float64{"value": -5})
 		}
 	case focusVis:
 		switch k {
