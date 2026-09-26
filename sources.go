@@ -377,3 +377,45 @@ func durationText(secs int) string {
 	}
 	return mmss(float64(secs))
 }
+
+// pendingRow is a row whose Enter is still in flight: a source opening, or a
+// playlist, station or track that hasn't started playing yet. It gets a
+// braille throbber in place of its marker until it settles or times out.
+type pendingRow struct {
+	tab      int
+	key      string // provider or playlist key; "" for a track
+	path     string // a track's path
+	playlist string // provider:playlist cliamp reports once a playlist plays
+	since    time.Time
+}
+
+// pendingTimeout gives up the throbber when nothing confirms the load.
+const pendingTimeout = 20 * time.Second
+
+var throbber = []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+
+func throbberFrame(now time.Time) string {
+	return string(throbber[now.UnixMilli()/80%int64(len(throbber))])
+}
+
+// matches reports whether r on tab is the row being loaded.
+func (p *pendingRow) matches(tab int, r row) bool {
+	if p == nil || tab != p.tab {
+		return false
+	}
+	if r.track != nil {
+		return p.key == "" && r.track.Path == p.path
+	}
+	return p.key != "" && r.key == p.key
+}
+
+// playing reports whether cliamp is now actually playing what p asked for.
+func (p *pendingRow) playing(s *ipc.RuntimeSnapshot) bool {
+	if s == nil || s.State != "playing" || s.Position <= 0 {
+		return false
+	}
+	if p.playlist != "" {
+		return s.Playlist == p.playlist
+	}
+	return s.Track != nil && p.path != "" && s.Track.Path == p.path
+}

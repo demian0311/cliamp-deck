@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -459,5 +460,34 @@ func TestSourcesReopenWhereLeft(t *testing.T) {
 	m = upd(m, playlistsMsg{provider: "radio", name: "Radio", list: list})
 	if r, _ := m.selected(); !m.inCountry || m.country != "France" || r.label != "C" {
 		t.Fatalf("reopened in %q (in country %v) on %q", m.country, m.inCountry, r.label)
+	}
+}
+
+// Enter on a station spins a throbber on its row until cliamp reports it
+// playing; a failed load stops it.
+func TestLoadingRowThrobs(t *testing.T) {
+	m := testModel(t)
+	m.focus = focusSources
+	m.snap.Playlist, m.snap.Position = "", 0
+	m = upd(m, playlistsMsg{provider: "radio", name: "Radio", list: []ipc.PlaylistInfo{{ID: "l:0", Name: "cliamp radio"}}})
+	m = key(m, "enter")
+	spinning := func() bool {
+		return strings.ContainsAny(stripANSI(m.render()), string(throbber))
+	}
+	if m.pending == nil || !spinning() {
+		t.Fatal("no throbber after Enter")
+	}
+	m = upd(m, stateMsg{&ipc.RuntimeSnapshot{State: "playing", Playlist: "radio:l:0"}})
+	if !spinning() {
+		t.Fatal("throbber stopped before playback started")
+	}
+	m = upd(m, stateMsg{&ipc.RuntimeSnapshot{State: "playing", Playlist: "radio:l:0", Position: 1}})
+	if m.pending != nil || spinning() {
+		t.Fatal("throbber still spinning once playing")
+	}
+	m = key(m, "enter")
+	m = upd(m, opMsg{label: "playing cliamp radio", err: errors.New("no route")})
+	if m.pending != nil {
+		t.Fatal("throbber still spinning after the load failed")
 	}
 }

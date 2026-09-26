@@ -366,6 +366,7 @@ func (m model) drawSources(g *grid, r rect) {
 		it := list.rows[start+i]
 		y := rows.y + i
 		mark, c := "  ", cNone
+		spin := m.pending.matches(m.tab, it)
 		switch {
 		case it.kind == rowHeader:
 			line := []rune("── " + it.label + " " + strings.Repeat("─", max(0, rows.w)))
@@ -373,8 +374,8 @@ func (m model) drawSources(g *grid, r rect) {
 			continue
 		case it.kind == rowSetup:
 			c = cDim
-		case it.kind == rowCountry && it.current:
-			mark, c = "► ", cGreen
+		case spin: // still loading: a throbber where the ► will go
+			mark, c = throbberFrame(time.Now())+" ", it.color
 		case it.current:
 			mark, c = "► ", cGreen
 		default:
@@ -393,6 +394,9 @@ func (m model) drawSources(g *grid, r rect) {
 			c = cWhite
 		}
 		g.put(rows.x, y, line, c)
+		if spin {
+			g.paint(rows.x+1, y, 1, cYellow)
+		}
 		if right != "" {
 			g.paint(rows.x+width, y, len([]rune(right)), cDim)
 		}

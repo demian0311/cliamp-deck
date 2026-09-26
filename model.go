@@ -114,6 +114,8 @@ type model struct {
 	// providers arrive, restoring while that provider's list loads.
 	restorePending, restoring bool
 
+	pending *pendingRow // the row whose Enter is still loading, if any
+
 	note   string
 	noteAt time.Time
 }
@@ -279,6 +281,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case playlistsMsg:
 		m.loading = false
+		if m.pending != nil && m.pending.key == msg.provider {
+			m.pending = nil
+		}
 		if msg.err != nil {
 			m.restoring = false
 			m.say(msg.name + ": " + msg.err.Error())
@@ -343,6 +348,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case opMsg:
 		if msg.err != nil {
+			m.pending = nil
 			m.say(msg.label + ": " + msg.err.Error())
 		} else if msg.label != "" {
 			m.say(msg.label)
@@ -428,6 +434,9 @@ func (m model) onSpectrum(msg specMsg) (tea.Model, tea.Cmd) {
 
 func (m model) onState(msg stateMsg) (tea.Model, tea.Cmd) {
 	m.snap, m.snapAt, m.online = msg.snap, time.Now(), true
+	if p := m.pending; p != nil && (p.playing(m.snap) || time.Since(p.since) > pendingTimeout) {
+		m.pending = nil
+	}
 	cmds := []tea.Cmd{tea.Tick(stateInterval, func(time.Time) tea.Msg { return m.fetchState()() })}
 	if m.eqDirty {
 		m.eqDirty = false

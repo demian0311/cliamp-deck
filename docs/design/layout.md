@@ -32,6 +32,8 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
   queue; `track.play`); `a` append to the end of the live playlist (`queue`, by path); `A` play next
   (`track.queue` for a supplied track, `queue.enqueue` for one already in the live playlist). Checked against
   `cliamp remote capabilities` on v2.0.1, 2026-09-26.
+- Enter on a row spins a braille throbber in its marker column (`pendingRow`) until it lands: a source's list
+  arrives, or cliamp reports the playlist/track playing with position > 0. A failed op or `pendingTimeout` stops it.
 - `/` searches the current source; at the top level it searches all configured sources, results grouped by source.
 - Mouse now: visualizer (takeover, `‹ ›`), source rows (click select, double-click play, wheel scroll), tabs.
   Later: transport buttons and a clickable seek bar. Bubble Tea v2: set `View.MouseMode` (cell motion).

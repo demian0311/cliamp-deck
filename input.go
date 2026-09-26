@@ -251,12 +251,15 @@ func (m model) activate() (tea.Model, tea.Cmd) {
 	switch r.kind {
 	case rowProvider:
 		m.loading = true
+		m.pending = &pendingRow{tab: m.tab, key: r.key, since: time.Now()}
 		m.say("opening " + r.label + "…")
 		return m, m.openProvider(r.key, r.label, false)
 	case rowPlaylist:
+		m.pending = &pendingRow{tab: m.tab, key: r.key, playlist: r.provider + ":" + r.key, since: time.Now()}
 		m.say("loading " + r.label + "…")
 		return m, m.run("playing "+r.label, "provider.load", map[string]string{"provider": r.provider, "playlist": r.key})
 	case rowTrack:
+		m.pending = &pendingRow{tab: m.tab, path: r.track.Path, since: time.Now()}
 		if m.tab == tabQueue {
 			return m, m.run("playing "+r.label, "queue.play", map[string]int{"index": r.index})
 		}
