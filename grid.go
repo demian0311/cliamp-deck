@@ -1,9 +1,12 @@
 package main
 
 import (
+	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
+
+	"cliamp-deck/fx"
 )
 
 // cls is a cell's colour role. Roles map to the terminal's ANSI palette so the
@@ -46,12 +49,20 @@ type grid struct {
 	w, h int
 	ch   []rune
 	cl   []cls
+	// Pixel cells: a ▀ whose foreground is the top pixel and background the
+	// bottom one. Emitted as raw 24-bit SGR; lipgloss per cell is too slow for
+	// a few thousand cells at 30 fps.
+	px       []bool
+	top, bot []fx.RGB
 }
 
 func newGrid(w, h int) *grid {
 	g := &grid{w: max(0, w), h: max(0, h)}
 	g.ch = make([]rune, g.w*g.h)
 	g.cl = make([]cls, g.w*g.h)
+	g.px = make([]bool, g.w*g.h)
+	g.top = make([]fx.RGB, g.w*g.h)
+	g.bot = make([]fx.RGB, g.w*g.h)
 	for i := range g.ch {
 		g.ch[i] = ' '
 	}
@@ -66,6 +77,7 @@ func (g *grid) put(x, y int, s string, c cls) {
 		if x >= 0 && x < g.w {
 			g.ch[y*g.w+x] = r
 			g.cl[y*g.w+x] = c
+			g.px[y*g.w+x] = false
 		}
 		x++
 	}
@@ -75,6 +87,22 @@ func (g *grid) set(x, y int, r rune, c cls) {
 	if x >= 0 && x < g.w && y >= 0 && y < g.h {
 		g.ch[y*g.w+x] = r
 		g.cl[y*g.w+x] = c
+		g.px[y*g.w+x] = false
+	}
+}
+
+// blit copies a pixel frame (2 pixel rows per cell row) to cells at x, y.
+func (g *grid) blit(x, y int, f *fx.Frame) {
+	for r := 0; r*2+1 < f.H; r++ {
+		for c := range f.W {
+			xx, yy := x+c, y+r
+			if xx < 0 || xx >= g.w || yy < 0 || yy >= g.h {
+				continue
+			}
+			k := yy*g.w + xx
+			g.px[k], g.ch[k] = true, '▀'
+			g.top[k], g.bot[k] = f.Px[r*2*f.W+c], f.Px[(r*2+1)*f.W+c]
+		}
 	}
 }
 
@@ -110,6 +138,8 @@ func (g *grid) String() string {
 	for y := range g.h {
 		run := make([]rune, 0, g.w)
 		cur := cNone
+		inPx := false
+		var lt, lb fx.RGB
 		flush := func() {
 			if len(run) == 0 {
 				return
@@ -123,6 +153,19 @@ func (g *grid) String() string {
 		}
 		for x := range g.w {
 			k := y*g.w + x
+			if g.px[k] {
+				flush()
+				if !inPx || g.top[k] != lt || g.bot[k] != lb {
+					writeSGR(&b, g.top[k], g.bot[k])
+					lt, lb, inPx = g.top[k], g.bot[k], true
+				}
+				b.WriteRune('▀')
+				continue
+			}
+			if inPx {
+				b.WriteString("\x1b[0m")
+				inPx = false
+			}
 			if g.cl[k] != cur {
 				flush()
 				cur = g.cl[k]
@@ -130,6 +173,9 @@ func (g *grid) String() string {
 			run = append(run, g.ch[k])
 		}
 		flush()
+		if inPx {
+			b.WriteString("\x1b[0m")
+		}
 		if y < g.h-1 {
 			b.WriteByte('\n')
 		}
@@ -148,4 +194,22 @@ func fit(s string, w int) string {
 		return s
 	}
 	return string(r[:w-1]) + "…"
+}
+
+func writeSGR(b *strings.Builder, fg, bg fx.RGB) {
+	var buf [48]byte
+	o := append(buf[:0], "\x1b[38;2;"...)
+	o = strconv.AppendUint(o, uint64(fg.R), 10)
+	o = append(o, ';')
+	o = strconv.AppendUint(o, uint64(fg.G), 10)
+	o = append(o, ';')
+	o = strconv.AppendUint(o, uint64(fg.B), 10)
+	o = append(o, ";48;2;"...)
+	o = strconv.AppendUint(o, uint64(bg.R), 10)
+	o = append(o, ';')
+	o = strconv.AppendUint(o, uint64(bg.G), 10)
+	o = append(o, ';')
+	o = strconv.AppendUint(o, uint64(bg.B), 10)
+	o = append(o, 'm')
+	b.Write(o)
 }

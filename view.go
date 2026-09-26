@@ -12,25 +12,76 @@ import (
 type tier int
 
 const (
-	tierXS tier = iota // three lines: a tmux split or status pane
-	tierS              // classic Winamp stack
-	tierM              // player + spectrum over sources
-	tierL              // wider player, full-width sources
-	tierXL             // btop grid: player · spectrum · levels / eq · sources
+	tierXS tier = iota // two lines of track over the stage: a tmux split or status pane
+	tierS              // player / stage / sources stacked, the "quarter" size
+	tierM              // player and sources left, stage right
+	tierXL             // btop grid: player+sources · stage · levels+eq
 )
 
 func tierFor(w, h int) tier {
 	switch {
-	case w < 40 || h < 9:
+	case w < 40 || h < 12:
 		return tierXS
 	case w < 72:
 		return tierS
-	case w < 110:
-		return tierM
 	case w < 150 || h < 34:
-		return tierL
+		return tierM
 	}
 	return tierXL
+}
+
+type rect struct{ x, y, w, h int }
+
+func (r rect) inner() rect { return rect{r.x + 1, r.y + 1, max(0, r.w-2), max(0, r.h-2)} }
+
+// layout places every panel for the current size. Update uses it too, to size
+// the effect frame to the stage before rendering into it.
+type layout struct {
+	tier                   tier
+	full, mini             bool
+	player, sources, stage rect
+	levels, eq             rect
+	stageBoxed             bool
+}
+
+func (l layout) stageInner() rect {
+	if l.stageBoxed {
+		return l.stage.inner()
+	}
+	return l.stage
+}
+
+const playerH = 6
+
+func (m model) layout() layout {
+	W, body := m.w, m.h-1
+	l := layout{tier: tierFor(m.w, m.h), stageBoxed: true}
+	switch {
+	case m.full:
+		l.full, l.stageBoxed = true, false
+		l.stage = rect{0, 0, W, body}
+	case l.tier == tierXS:
+		l.mini, l.stageBoxed = true, false
+		l.stage = rect{0, 2, W, max(0, m.h-2)}
+	case l.tier == tierS:
+		sh := max(5, min(8, body*3/10))
+		l.player = rect{0, 0, W, playerH}
+		l.sources = rect{0, body - sh, W, sh}
+		l.stage = rect{0, playerH, W, max(0, body-sh-playerH)}
+	case l.tier == tierM:
+		lw := min(48, W*38/100)
+		l.player = rect{0, 0, lw, playerH}
+		l.sources = rect{0, playerH, lw, body - playerH}
+		l.stage = rect{lw, 0, W - lw, body}
+	default:
+		const lw, rw = 50, 40
+		l.player = rect{0, 0, lw, playerH}
+		l.sources = rect{0, playerH, lw, body - playerH}
+		l.stage = rect{lw, 0, W - lw - rw, body}
+		l.levels = rect{W - rw, 0, rw, body / 2}
+		l.eq = rect{W - rw, body / 2, rw, body - body/2}
+	}
+	return l
 }
 
 func (m model) View() tea.View {
@@ -50,61 +101,50 @@ func (m model) render() string {
 		g.put(max(0, (m.w-len([]rune(msg)))/2), m.h/2, fit(msg, m.w), cDim)
 		return g.String()
 	}
-	W, H, body := m.w, m.h, m.h-1
-	switch tierFor(W, H) {
-	case tierXS:
-		m.drawMini(g)
+	l := m.layout()
+	m.drawStage(g, l)
+	switch {
+	case l.full:
+		m.drawOverlay(g, m.h-1)
 		return g.String()
-	case tierS:
-		ph := min(6, body)
-		m.drawPlayer(g, 0, 0, W, ph)
-		sh := max(4, min(9, int(float64(body)*0.3)))
-		if body-ph >= sh {
-			m.drawSpectrum(g, 0, ph, W, sh, true)
-		} else {
-			sh = 0
-		}
-		if body-ph-sh >= 3 {
-			m.drawSources(g, 0, ph+sh, W, body-ph-sh)
-		}
-	default:
-		t := tierFor(W, H)
-		top := max(9, min(14, int(float64(body)*0.4)))
-		pw := map[tier]int{tierM: min(52, W*58/100), tierL: 54, tierXL: 58}[t]
-		lw := 0
-		if t == tierXL {
-			lw = 36
-		}
-		m.drawPlayer(g, 0, 0, pw, top)
-		m.drawSpectrum(g, pw, 0, W-pw-lw, top, true)
-		if lw > 0 {
-			m.drawLevels(g, W-lw, 0, lw, top)
-		}
-		if bh := body - top; bh >= 3 {
-			if t == tierXL {
-				const ew = 50
-				m.drawEQ(g, 0, top, ew, bh)
-				m.drawSources(g, ew, top, W-ew, bh)
-			} else {
-				m.drawSources(g, 0, top, W, bh)
-			}
-		}
+	case l.mini:
+		m.drawTrackLines(g, 0, 0, m.w, 2)
+		return g.String()
 	}
-	m.drawStatus(g, H-1)
+	m.drawPlayer(g, l.player)
+	if l.sources.h >= 3 {
+		m.drawSources(g, l.sources.x, l.sources.y, l.sources.w, l.sources.h)
+	}
+	if l.levels.w > 0 {
+		m.drawLevels(g, l.levels.x, l.levels.y, l.levels.w, l.levels.h)
+		m.drawEQ(g, l.eq.x, l.eq.y, l.eq.w, l.eq.h)
+	}
+	m.drawStatus(g, m.h-1)
 	return g.String()
 }
 
-var ledGlyphs = map[rune][3]string{
-	'0': {"█▀█", "█ █", "▀▀▀"}, '1': {" ▀█", "  █", "  ▀"}, '2': {"▀▀█", "█▀▀", "▀▀▀"},
-	'3': {"▀▀█", " ▀█", "▀▀▀"}, '4': {"█ █", "▀▀█", "  ▀"}, '5': {"█▀▀", "▀▀█", "▀▀▀"},
-	'6': {"█▀▀", "█▀█", "▀▀▀"}, '7': {"▀▀█", "  █", "  ▀"}, '8': {"█▀█", "█▀█", "▀▀▀"},
-	'9': {"█▀█", "▀▀█", "▀▀▀"}, ':': {" ", "▪", " "},
+func (m model) drawStage(g *grid, l layout) {
+	r := l.stage
+	if r.w < 2 || r.h < 1 {
+		return
+	}
+	if m.mode == 0 {
+		m.drawSpectrum(g, r.x, r.y, r.w, r.h, l.stageBoxed)
+		return
+	}
+	if l.stageBoxed {
+		g.box(r.x, r.y, r.w, r.h, "²stage · "+m.modeName(), cAmber)
+	}
+	in := l.stageInner()
+	if m.frame.W == in.w && m.frame.H == in.h*2 {
+		g.blit(in.x, in.y, m.frame)
+	}
 }
 
 func (m model) trackText() (title, source string) {
 	t := m.snap.Track
 	if t == nil {
-		return "nothing playing — pick a source ↓", ""
+		return "nothing playing — pick a source", ""
 	}
 	title = t.Title
 	if t.Artist != "" {
@@ -117,14 +157,14 @@ func (m model) trackText() (title, source string) {
 	return title, source
 }
 
-func (m model) stateLabel() (string, cls) {
+func (m model) stateGlyph() (string, cls) {
 	switch m.snap.State {
 	case "playing":
-		return "► PLAYING", cGreen
+		return "►", cGreen
 	case "paused":
-		return "‖ PAUSED", cYellow
+		return "‖", cYellow
 	}
-	return "■ STOPPED", cDim
+	return "■", cDim
 }
 
 func (m model) live() bool {
@@ -146,67 +186,90 @@ func (m model) marquee(text string, w int) string {
 	return string(out)
 }
 
-func (m model) drawPlayer(g *grid, x, y, w, h int) {
-	g.box(x, y, w, h, "¹player", cGreen)
-	ix, iw, iy, ih := x+2, w-4, y+1, h-2
+// drawTrackLines writes the title line and, when there is room, the time line.
+func (m model) drawTrackLines(g *grid, x, y, w, rows int) {
+	if w < 4 || rows < 1 {
+		return
+	}
+	m.drawTitleLine(g, x, y, w)
+	if rows >= 2 {
+		m.drawTimeLine(g, x, y+1, w)
+	}
+}
+
+func (m model) drawTitleLine(g *grid, x, y, w int) {
+	glyph, gc := m.stateGlyph()
+	title, _ := m.trackText()
+	g.put(x, y, glyph, gc)
+	g.put(x+2, y, m.marquee(title, max(1, w-2)), cWhite)
+}
+
+// drawTimeLine is a thin progress bar for a track. A stream has no length, so
+// it gets LIVE and how long it has been on air instead.
+func (m model) drawTimeLine(g *grid, x, y, w int) {
+	pos, dur := m.position(), m.snap.Duration
+	if m.live() {
+		g.put(x, y, "● LIVE", cRed)
+		g.put(x+8, y, fit("on air "+mmss(pos), w-8), cDim)
+		return
+	}
+	bw := max(2, w-12)
+	p := 0
+	if dur > 0 {
+		p = int(math.Round(pos / dur * float64(bw-1)))
+	}
+	g.put(x, y, mmss(pos), cGreen)
+	g.put(x+6, y, strings.Repeat("━", p), cAmber)
+	g.put(x+6+p, y, "●", cWhite)
+	g.put(x+7+p, y, strings.Repeat("─", max(0, bw-p-1)), cDim)
+	if w >= 12 {
+		g.put(x+w-5, y, mmss(dur), cDim)
+	}
+}
+
+// drawPlayer rows: title, source, time, transport.
+func (m model) drawPlayer(g *grid, r rect) {
+	g.box(r.x, r.y, r.w, r.h, "¹player", cGreen)
+	ix, iw, iy, ih := r.x+2, r.w-4, r.y+1, r.h-2
 	if iw < 4 || ih < 1 {
 		return
 	}
-	pos, dur := m.position(), m.snap.Duration
-	title, source := m.trackText()
-	label, lc := m.stateLabel()
-	row := iy
-	if ih >= 6 && iw >= 36 {
-		cx := ix
-		for _, ch := range mmss(pos) {
-			gl := ledGlyphs[ch]
-			for r := range 3 {
-				g.put(cx, iy+r, gl[r], cGreen)
+	m.drawTitleLine(g, ix, iy, iw)
+	if ih >= 2 {
+		_, source := m.trackText()
+		parts := []string{}
+		for _, p := range []string{source, m.modeLine()} {
+			if p != "" {
+				parts = append(parts, p)
 			}
-			cx += len([]rune(gl[0])) + 1
 		}
-		sx, sw := ix+21, iw-21
-		g.put(sx, iy, label, lc)
-		g.put(sx, iy+1, fit(source, sw), cCyan)
-		g.put(sx, iy+2, fit(m.modeLine(), sw), cDim)
-		row = iy + 3
-		if ih >= 7 {
-			row++
-		}
-	} else {
-		g.put(ix, row, fit(label+"  "+source, iw), lc)
-		row++
+		g.put(ix+2, iy+1, fit(strings.Join(parts, " · "), iw-2), cCyan)
 	}
-	if row < iy+ih {
-		g.put(ix, row, m.marquee(title, iw), cWhite)
-		row++
+	if ih >= 3 {
+		m.drawTimeLine(g, ix, iy+2, iw)
 	}
-	if row < iy+ih {
-		bw := max(4, iw-14)
-		g.put(ix, row, mmss(pos), cDim)
-		if m.live() {
-			g.put(ix+6, row, "● LIVE "+strings.Repeat("·", max(0, bw-7)), cRed)
-		} else {
-			p := 0
-			if dur > 0 {
-				p = int(math.Round(pos / dur * float64(bw-1)))
-			}
-			g.put(ix+6, row, strings.Repeat("━", p), cAmber)
-			g.put(ix+6+p, row, "●", cWhite)
-			g.put(ix+7+p, row, strings.Repeat("─", max(0, bw-p-1)), cDim)
-			g.put(ix+7+bw, row, mmss(dur), cDim)
-		}
-		row++
-	}
-	if row < iy+ih {
-		g.put(ix, row, "◄◄  ►  ‖  ■  ►►", cWhite)
+	if ih >= 4 {
+		g.put(ix, iy+3, "◄◄  ►  ‖  ■  ►►", cWhite)
 		if vw := min(10, iw-28); vw > 3 {
-			frac := (m.snap.Volume + 30) / 36
-			n := int(math.Round(clamp01(frac) * float64(vw)))
+			n := int(math.Round(clamp01((m.snap.Volume+30)/36) * float64(vw)))
 			vol := fmt.Sprintf("vol %s%s %+.0fdB", strings.Repeat("▰", n), strings.Repeat("▱", vw-n), m.snap.Volume)
-			g.put(ix+iw-len([]rune(vol)), row, vol, cCyan)
+			g.put(ix+iw-len([]rune(vol)), iy+3, vol, cCyan)
 		}
 	}
+}
+
+func (m model) drawOverlay(g *grid, y int) {
+	glyph, gc := m.stateGlyph()
+	title, source := m.trackText()
+	hint := "  v " + m.modeName() + " · V exit"
+	g.put(1, y, glyph, gc)
+	text := title
+	if source != "" {
+		text += " · " + source
+	}
+	room := max(1, g.w-4-len([]rune(hint)))
+	g.put(3, y, m.marquee(text, room), cWhite)
+	g.put(g.w-len([]rune(hint))-1, y, hint, cDim)
 }
 
 func (m model) modeLine() string {
@@ -361,7 +424,9 @@ func (m model) drawEQ(g *grid, x, y, w, h int) {
 		} else {
 			g.put(cx, mid+n+1, "▬▬", cWhite)
 		}
-		g.put(ix+4+i*cw+max(0, (cw-len(lab))/2), iy+ih, lab, cDim)
+		if cw >= 4 || i%2 == 0 { // three-cell columns can't fit ten 3-char labels
+			g.put(ix+4+i*cw+max(0, (cw-len(lab))/2), iy+ih, lab, cDim)
+		}
 	}
 }
 
@@ -431,27 +496,6 @@ func (m model) drawSources(g *grid, x, y, w, h int) {
 	}
 }
 
-func (m model) drawMini(g *grid) {
-	title, _ := m.trackText()
-	label, lc := m.stateLabel()
-	g.put(0, 0, string([]rune(label)[:1])+" ", lc)
-	g.put(2, 0, m.marquee(title, max(1, g.w-2)), cWhite)
-	if g.h > 1 {
-		g.put(0, 1, mmss(m.position())+" ", cGreen)
-		bw := max(2, g.w-6)
-		if m.live() {
-			g.put(6, 1, fit("● LIVE", bw), cRed)
-		} else if m.snap.Duration > 0 {
-			p := int(float64(bw) * m.position() / m.snap.Duration)
-			g.put(6, 1, strings.Repeat("━", p), cAmber)
-			g.put(6+p, 1, strings.Repeat("─", max(0, bw-p)), cDim)
-		}
-	}
-	if g.h > 2 {
-		m.drawSpectrum(g, 0, 2, g.w, g.h-2, false)
-	}
-}
-
 func (m model) drawStatus(g *grid, y int) {
 	right := "● cliamp"
 	rc := cGreen
@@ -462,7 +506,7 @@ func (m model) drawStatus(g *grid, y int) {
 	if m.note != "" && time.Since(m.noteAt) < 5*time.Second {
 		g.put(1, y, fit(m.note, room), cYellow)
 	} else {
-		keys := [][2]string{{"␣", "play"}, {"n/p", "skip"}, {"←→", "seek"}, {"+/-", "vol"}, {"⏎", "open"}, {"esc", "back"}, {"q", "quit"}}
+		keys := [][2]string{{"␣", "play"}, {"n/p", "skip"}, {"←→", "seek"}, {"+/-", "vol"}, {"v", "fx"}, {"V", "full"}, {"⏎", "open"}, {"esc", "back"}, {"q", "quit"}}
 		x := 1
 		for _, k := range keys {
 			seg := len([]rune(k[0])) + 1 + len([]rune(k[1])) + 2

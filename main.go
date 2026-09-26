@@ -10,10 +10,13 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/bjarneo/cliamp/ipc"
+
+	"cliamp-deck/fx"
 )
 
 func main() {
 	sock := flag.String("socket", ipc.DefaultSocketPath(), "cliamp IPC socket")
+	theme := flag.String("theme", fx.OmarchyColors(), "Omarchy colors.toml the visualizers paint with")
 	spawn := flag.Bool("spawn", true, "start `cliamp --daemon` when nothing answers on the socket")
 	flag.Parse()
 
@@ -24,7 +27,7 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	if _, err := tea.NewProgram(newModel(c)).Run(); err != nil {
+	if _, err := tea.NewProgram(newModel(c, *theme)).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "cliamp-deck:", err)
 		os.Exit(1)
 	}

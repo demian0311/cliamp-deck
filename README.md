@@ -9,7 +9,13 @@ go build -o cliamp-deck . && ./cliamp-deck          # starts `cliamp --daemon` i
 ./cliamp-deck --spawn=false --socket PATH           # attach to a specific instance only
 ```
 
-Keys: space play/pause · n/p skip · ←/→ seek · +/- volume · j/k move · enter open/load · esc back · q quit.
+Keys: space play/pause · n/p skip · ←/→ seek · +/- volume · j/k move · enter open/load · esc back ·
+v cycle stage (spectrum, plasma, tunnel, fire, metaballs) · V fullscreen stage · q quit.
+
+Stage effects live in `fx/` (interface: pixel frame + bass/mid/treble/beat + theme). Each cell is a `▀`
+with 24-bit fg/bg, so the terminal must support truecolor. Colours come from the Omarchy theme at
+`~/.local/state/omarchy/current/theme/colors.toml` (override: `--theme PATH`), re-read within 2 s of
+`omarchy theme set`.
 
 Known limits (2026-09-26):
 - `spectrum.get` serves 10 bands; the deck interpolates to braille resolution.

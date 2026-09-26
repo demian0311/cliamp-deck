@@ -2,10 +2,13 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/bjarneo/cliamp/ipc"
+
+	"cliamp-deck/fx"
 )
 
 const (
@@ -31,6 +34,10 @@ type (
 	opMsg struct {
 		label string
 		err   error
+	}
+	themeMsg struct {
+		th  *fx.Theme
+		mod time.Time
 	}
 )
 
@@ -63,12 +70,49 @@ type model struct {
 
 	note   string
 	noteAt time.Time
+
+	// Stage: mode 0 is the braille spectrum, 1.. index effects[mode-1].
+	effects  []fx.Effect
+	mode     int
+	full     bool
+	an       *fx.Analyzer
+	frame    *fx.Frame
+	start    time.Time
+	lastSpec time.Time
+
+	themePath string
+	theme     *fx.Theme
+	themeMod  time.Time
 }
 
-func newModel(c client) model { return model{c: c} }
+func newModel(c client, themePath string) model {
+	th, _ := fx.LoadTheme(themePath)
+	return model{c: c, effects: fx.Stock(), mode: 1, an: &fx.Analyzer{}, frame: &fx.Frame{},
+		start: time.Now(), themePath: themePath, theme: th, themeMod: modTime(themePath)}
+}
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(m.fetchState(), m.fetchSpec(), m.fetchProviders())
+	return tea.Batch(m.fetchState(), m.fetchSpec(), m.fetchProviders(), m.watchTheme())
+}
+
+func modTime(path string) time.Time {
+	if st, err := os.Stat(path); err == nil {
+		return st.ModTime()
+	}
+	return time.Time{}
+}
+
+// watchTheme re-reads colors.toml when `omarchy theme set` replaces it.
+func (m model) watchTheme() tea.Cmd {
+	path, seen := m.themePath, m.themeMod
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+		mod := modTime(path)
+		if mod.Equal(seen) {
+			return themeMsg{mod: seen}
+		}
+		th, _ := fx.LoadTheme(path)
+		return themeMsg{th, mod}
+	})
 }
 
 func (m model) fetchSpec() tea.Cmd {
@@ -140,7 +184,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.hist = m.hist[len(m.hist)-histLen:]
 		}
 		m.marq += 0.2
+		now := time.Now()
+		dt := 1.0 / 30
+		if !m.lastSpec.IsZero() {
+			dt = min(0.1, now.Sub(m.lastSpec).Seconds())
+		}
+		m.lastSpec = now
+		a := m.an.Update(scaled, dt)
+		if m.mode > 0 && m.w > 0 {
+			if st := m.layout().stageInner(); st.w > 0 && st.h > 0 {
+				m.frame.Resize(st.w, st.h*2)
+				m.effects[m.mode-1].Render(m.frame, a, now.Sub(m.start).Seconds(), dt, m.theme)
+			}
+		}
 		return m, m.fetchSpec()
+
+	case themeMsg:
+		if msg.th != nil {
+			m.theme, m.themeMod = msg.th, msg.mod
+			m.say("theme: " + msg.th.Name)
+		}
+		return m, m.watchTheme()
 
 	case stateMsg:
 		m.snap, m.snapAt, m.online = msg.snap, time.Now(), true
@@ -199,6 +263,11 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 	switch k {
 	case "q", "ctrl+c":
 		return m, tea.Quit
+	case "v":
+		m.mode = (m.mode + 1) % (len(m.effects) + 1)
+		m.say("stage: " + m.modeName())
+	case "V":
+		m.full = !m.full
 	case "space":
 		return m, m.run("", "toggle", nil)
 	case "n":
@@ -276,4 +345,11 @@ func mmss(s float64) string {
 		return fmt.Sprintf("%d:%02d:%02d", t/3600, t/60%60, t%60)
 	}
 	return fmt.Sprintf("%02d:%02d", t/60, t%60)
+}
+
+func (m model) modeName() string {
+	if m.mode == 0 {
+		return "spectrum"
+	}
+	return m.effects[m.mode-1].Name()
 }

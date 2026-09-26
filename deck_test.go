@@ -46,7 +46,7 @@ func TestTiers(t *testing.T) {
 	cases := []struct {
 		w, h int
 		want tier
-	}{{38, 6, tierXS}, {60, 24, tierS}, {90, 40, tierM}, {130, 38, tierL}, {170, 30, tierL}, {170, 44, tierXL}}
+	}{{38, 6, tierXS}, {60, 24, tierS}, {90, 40, tierM}, {130, 38, tierM}, {170, 30, tierM}, {170, 44, tierXL}}
 	for _, c := range cases {
 		if got := tierFor(c.w, c.h); got != c.want {
 			t.Errorf("tierFor(%d,%d) = %d, want %d", c.w, c.h, got, c.want)
@@ -54,26 +54,33 @@ func TestTiers(t *testing.T) {
 	}
 }
 
-// Every tier must fill exactly w×h cells: no panel may spill past the edge.
+// Every tier, stage mode and fullscreen must fill exactly w×h cells: no panel
+// or pixel run may spill past the edge.
 func TestRenderFitsEveryTier(t *testing.T) {
 	shuffle := false
-	m := newModel(client{sock: "/nonexistent"})
+	m := newModel(client{sock: "/nonexistent"}, "/nonexistent/colors.toml")
 	m.snap = &ipc.RuntimeSnapshot{State: "playing", Position: 107, Duration: 151, Volume: -4, Shuffle: &shuffle,
 		EQPreset: "Rock", EQBands: []float64{5, 4, 1, -1, -2, -1, 2, 4, 5, 5},
 		Track: &ipc.TrackInfo{Title: "Roygbiv", Artist: "Boards of Canada", Album: "Music Has the Right to Children"}}
 	m.providers = []ipc.ProviderInfo{{Key: "radio", Name: "Radio"}, {Key: "local", Name: "Local"}}
 	m.showProviders()
-	m.hi = resample([]float64{.9, .8, .6, .7, .5, .4, .3, .2, .1, .05}, hiRes)
-	m.pk.update(m.hi)
-	for _, sz := range [][2]int{{210, 52}, {170, 44}, {130, 38}, {90, 40}, {60, 24}, {38, 6}, {28, 3}} {
-		m.w, m.h = sz[0], sz[1]
-		lines := strings.Split(stripANSI(m.render()), "\n")
-		if len(lines) != sz[1] {
-			t.Fatalf("%dx%d: %d lines", sz[0], sz[1], len(lines))
-		}
-		for i, l := range lines {
-			if n := len([]rune(l)); n != sz[0] {
-				t.Fatalf("%dx%d: line %d is %d cells", sz[0], sz[1], i, n)
+	bands := specMsg{[]float64{.9, .8, .6, .7, .5, .4, .3, .2, .1, .05}}
+	for mode := 0; mode <= len(m.effects); mode++ {
+		for _, full := range []bool{false, true} {
+			m.mode, m.full = mode, full
+			for _, sz := range [][2]int{{210, 52}, {170, 44}, {130, 38}, {90, 40}, {60, 24}, {38, 6}, {28, 3}} {
+				m.w, m.h = sz[0], sz[1]
+				next, _ := m.Update(bands)
+				mm := next.(model)
+				lines := strings.Split(stripANSI(mm.render()), "\n")
+				if len(lines) != sz[1] {
+					t.Fatalf("mode %d full %v %dx%d: %d lines", mode, full, sz[0], sz[1], len(lines))
+				}
+				for i, l := range lines {
+					if n := len([]rune(l)); n != sz[0] {
+						t.Fatalf("mode %d full %v %dx%d: line %d is %d cells", mode, full, sz[0], sz[1], i, n)
+					}
+				}
 			}
 		}
 	}
