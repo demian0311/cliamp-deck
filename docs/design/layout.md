@@ -36,13 +36,15 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
 - Mouse now: visualizer (takeover, `‹ ›`), source rows (click select, double-click play, wheel scroll), tabs.
   Later: transport buttons and a clickable seek bar. Bubble Tea v2: set `View.MouseMode` (cell motion).
 - `e` toggles the EQ under the player (and focuses the player): `←→` band, `←` past the first band closes it,
-  `↑↓` gain ±1 dB (±12), `p` next preset (cliamp's 16 built-ins), `e`/Esc close. Applied live through the `eq` operation (name | band + value).
+  `↑↓` gain ±1 dB (±12), `p` next preset (cliamp's 16 built-ins), `0` Flat (EQ off), `e`/Esc close. Applied live through the `eq` operation (name | band + value).
 
 ## Player
 - Rows: title (marquee) · source/station · time line (track: thin bar; stream: `● LIVE on air mm:ss`) ·
   transport + volume. A stream drops `◄◄ ►►` (nothing to skip through). Volume is a braille bar (-30..+6 dB).
-- Meter (title row, right): one braille row, a bar per dot row — highs on top, lows at the bottom — from cliamp's
-  bands split into `meterRanges` ranges, each in dB below its own decaying peak over `meterRangeDB`.
+- Meter (title and source rows, right): two braille rows, a bar per dot row — highs on top, lows at the bottom —
+  from cliamp's bands split into `meterRanges` ranges, each in dB below its own decaying peak over `meterRangeDB`.
+  Each bar leaves a white peak dot that holds `peakHold` frames then slides back `peakFall` per frame.
+- Stream time line: the `●` before LIVE blinks while playing.
 - One braille level meter (mono), colour ramp green → amber → red, top right. cliamp exposes no stereo levels
   over IPC; L/R needs an upstream PR first.
 
@@ -55,8 +57,10 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
   YouTube Music as of v2.0.1) and re-verify on bump.
 
 ## Persistence (deck-owned; cliamp's daemon does not save EQ)
-- `~/.config/cliamp-deck/state.toml`: EQ (preset name + 10 bands) and last visualizer. On attach, reapply the EQ.
-- Not remembered: source tab or selection, takeover, EQ panel open.
+- `~/.config/cliamp-deck/state.toml`: EQ (preset name + 10 bands), last visualizer, and where the sources list was
+  left (open provider, radio country, selected row). On attach, reapply the EQ and reopen that provider/country.
+  Saved on opening a provider or country, going back, and quitting; not overwritten before the restore lands.
+- Not remembered: queue/history tab, takeover, EQ panel open.
 
 ## Deferred / upstream candidates
 - cliamp daemon saving EQ like its TUI does (then drop deck-side EQ persistence).

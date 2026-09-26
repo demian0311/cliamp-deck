@@ -425,9 +425,38 @@ func TestStreamsHideSkipButtons(t *testing.T) {
 }
 
 func TestBrailleBarsStackFourRows(t *testing.T) {
-	got := string(brailleBars([]float64{1, 0.5, 0, 0.25}, 2))
+	cells, _ := brailleBars([]float64{1, 0.5, 0, 0.25}, nil, 2)
+	got := string(cells)
 	// top row full, second half, third empty, bottom a quarter (one dot)
 	if got != "⡛⠉" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+// A country picked in one run is where the sources list reopens in the next.
+func TestSourcesReopenWhereLeft(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.toml")
+	list := []ipc.PlaylistInfo{{ID: "c:0", Name: "A · Germany"}, {ID: "c:1", Name: "B · France"}, {ID: "c:2", Name: "C · France"}}
+	providers := providersMsg{list: []ipc.ProviderInfo{{Key: "radio", Name: "Radio"}}}
+
+	m := newModel(client{sock: "/nonexistent"}, "/nonexistent/colors.toml", path)
+	m.focus = focusSources
+	m = upd(m, providers)
+	m = upd(m, playlistsMsg{provider: "radio", name: "Radio", list: list})
+	m = key(m, "right") // France, the first country (most stations)
+	m = key(m, "down")  // C
+	m = key(m, "q")
+
+	m = newModel(client{sock: "/nonexistent"}, "/nonexistent/colors.toml", path)
+	next, cmd := m.Update(providers)
+	m = next.(model)
+	if cmd == nil || !m.restoring {
+		t.Fatal("the remembered source was not reopened")
+	}
+	m = key(m, "q") // quitting mid-restore keeps the remembered place
+	m = upd(m, playlistsMsg{provider: "radio", name: "Radio", list: list})
+	if r, _ := m.selected(); !m.inCountry || m.country != "France" || r.label != "C" {
+		t.Fatalf("reopened in %q (in country %v) on %q", m.country, m.inCountry, r.label)
 	}
 }

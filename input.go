@@ -12,6 +12,7 @@ import (
 
 func (m model) key(k string) (tea.Model, tea.Cmd) {
 	if k == "ctrl+c" {
+		m.rememberSource()
 		return m, tea.Quit
 	}
 	if m.searching {
@@ -51,6 +52,8 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 			return m, cmd
 		case "p":
 			return m, m.nextPreset()
+		case "0":
+			return m, m.setPreset("Flat")
 		case "e", "esc":
 			m.eqOpen = false
 			return m, nil
@@ -59,6 +62,7 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 	}
 	switch k {
 	case "q":
+		m.rememberSource()
 		return m, tea.Quit
 	case "tab":
 		m.focus = (m.focus + 1) % focusCount
@@ -267,6 +271,7 @@ func (m model) activate() (tea.Model, tea.Cmd) {
 	case rowCountry:
 		m.inCountry, m.country = true, strings.TrimPrefix(r.key, countryKey)
 		m.lists[tabSources] = listState{rows: m.playlistRows(m.provider, m.stations)}
+		m.rememberSource()
 		return m, nil
 	}
 	return m, nil
@@ -322,6 +327,9 @@ func (m model) back() (tea.Model, tea.Cmd) {
 		}
 	default:
 		m.focus = focusVis
+	}
+	if m.tab == tabSources {
+		m.rememberSource()
 	}
 	return m, nil
 }

@@ -147,12 +147,13 @@ func (m model) drawPlayer(g *grid, r rect) {
 	if iw < 4 || ih < 1 {
 		return
 	}
-	mw := 0
-	if iw > 34 {
+	mw := 0 // the meter's width, plus the gap before it
+	if iw > 34 && ih >= 2 {
 		mw = min(24, iw/4)
 		m.drawMeter(g, ix+iw-mw, iy, mw)
+		mw++
 	}
-	m.drawTitleLine(g, ix, iy, iw-mw-max(0, min(1, mw)))
+	m.drawTitleLine(g, ix, iy, iw-mw)
 	if ih >= 2 {
 		_, source := m.trackText()
 		parts := []string{}
@@ -161,7 +162,7 @@ func (m model) drawPlayer(g *grid, r rect) {
 				parts = append(parts, p)
 			}
 		}
-		g.put(ix+2, iy+1, fit(strings.Join(parts, " · "), iw-2), cCyan)
+		g.put(ix+2, iy+1, fit(strings.Join(parts, " · "), iw-2-mw), cCyan)
 	}
 	if ih >= 3 {
 		m.drawTimeLine(g, ix, iy+2, iw)
@@ -183,19 +184,27 @@ func (m model) drawPlayer(g *grid, r rect) {
 	}
 }
 
-// drawMeter is a one-row braille meter with a bar per dot row: highs on top,
-// lows at the bottom (see updateLevels), coloured by how far it reaches.
+// drawMeter is a braille meter two text rows high with a bar per dot row:
+// highs on top, lows at the bottom (see updateLevels), coloured by how far
+// each cell reaches, with white peak dots trailing back to the bars.
 func (m model) drawMeter(g *grid, x, y, w int) {
-	fills := make([]float64, meterRanges)
-	for r := range meterRanges {
-		fills[r] = m.levels[meterRanges-1-r]
-	}
-	for i, ch := range brailleBars(fills, w) {
-		c := heightClass(float64(i) / float64(w) * 0.95)
-		if ch == 0x2800 {
-			ch, c = '⣀', cDim
+	for row := range meterRanges / 4 {
+		fills, peaks := make([]float64, 4), make([]float64, 4)
+		for d := range 4 {
+			r := meterRanges - 1 - row*4 - d
+			fills[d], peaks[d] = m.levels[r], m.levelPeak[r]
 		}
-		g.set(x+i, y, ch, c)
+		cells, peakOnly := brailleBars(fills, peaks, w)
+		for i, ch := range cells {
+			c := heightClass(float64(i) / float64(w) * 0.95)
+			switch {
+			case ch == 0x2800:
+				ch, c = '⣀', cDim
+			case peakOnly[i]:
+				c = cWhite
+			}
+			g.set(x+i, y+row, ch, c)
+		}
 	}
 }
 
@@ -203,7 +212,8 @@ func (m model) drawMeter(g *grid, x, y, w int) {
 // across -30..+6 dB.
 func drawVolume(g *grid, x, y, w int, db float64) {
 	f := clamp01((db + 30) / 36)
-	for i, ch := range brailleBars([]float64{f, f, f, f}, w) {
+	cells, _ := brailleBars([]float64{f, f, f, f}, nil, w)
+	for i, ch := range cells {
 		c := cCyan
 		if ch == 0x2800 {
 			ch, c = '⣀', cDim
@@ -242,7 +252,7 @@ func (m model) drawEQ(g *grid, r rect) {
 	if m.eqFocused() {
 		c, tc = cFocus, cSel
 	}
-	g.box(r.x, r.y, r.w, r.h, fmt.Sprintf("eq · %s · %s Hz %+.0f dB · ←→ band ↑↓ gain p preset", preset, eqLabels[m.eqBand], sel), c, tc)
+	g.box(r.x, r.y, r.w, r.h, fmt.Sprintf("eq · %s · %s Hz %+.0f dB · ←→ band ↑↓ gain p preset 0 off", preset, eqLabels[m.eqBand], sel), c, tc)
 	in := r.inner()
 	ih := in.h - 1 // last inner row holds the labels
 	if ih < 3 || in.w < 30 {
@@ -429,7 +439,7 @@ func (m model) hints() [][2]string {
 	case m.searching:
 		return [][2]string{{"⏎", "search"}, {"esc", "cancel"}}
 	case m.eqFocused():
-		return [][2]string{{"←→", "band"}, {"↑↓", "gain"}, {"p", "preset"}, {"esc", "player"}, {"tab", "focus"}}
+		return [][2]string{{"←→", "band"}, {"↑↓", "gain"}, {"p", "preset"}, {"0", "off"}, {"esc", "player"}, {"tab", "focus"}}
 	case m.focus == focusSources:
 		keys := [][2]string{{"↑↓", "move"}, {"→", "open"}, {"←", "back"}, {"⏎", "play"}, {"a", "queue"}, {"A", "play next"}, {"[ ]", "tabs"}, {"/", "search"}}
 		if r, ok := m.selected(); ok && r.kind == rowSetup {
@@ -531,7 +541,11 @@ func (m model) drawTitleLine(g *grid, x, y, w int) {
 func (m model) drawTimeLine(g *grid, x, y, w int) {
 	pos, dur := m.position(), m.snap.Duration
 	if m.live() {
-		g.put(x, y, "● LIVE", cRed)
+		dot := "●"
+		if m.snap.State == "playing" && time.Now().UnixMilli()/600%2 == 1 { // blinks while on air
+			dot = " "
+		}
+		g.put(x, y, dot+" LIVE", cRed)
 		g.put(x+8, y, fit("on air "+mmss(pos), w-8), cDim)
 		return
 	}

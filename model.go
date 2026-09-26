@@ -66,8 +66,9 @@ type model struct {
 	pk    peaks     // falling caps over hi
 	// The player's meter: four frequency ranges, lows to highs, each
 	// auto-gained on its own so the quiet highs move as visibly as the bass.
-	levels, levelGain [meterRanges]float64
-	marq              float64
+	levels, levelGain, levelPeak [meterRanges]float64
+	peakWait                     [meterRanges]int
+	marq                         float64
 
 	// Visualizer: mode 0 is the braille spectrum, 1.. index effects[mode-1].
 	effects  []fx.Effect
@@ -109,6 +110,10 @@ type model struct {
 	eqApplied bool // the saved EQ has been reapplied since attaching
 	eqDirty   bool // an EQ change is waiting for fresh state to be saved
 
+	// Reopening the sources list where it was left: restorePending until the
+	// providers arrive, restoring while that provider's list loads.
+	restorePending, restoring bool
+
 	note   string
 	noteAt time.Time
 }
@@ -119,6 +124,7 @@ func newModel(c client, themePath, statePath string) model {
 		start: time.Now(), themePath: themePath, theme: th, themeMod: modTime(themePath),
 		focus: focusVis, statePath: statePath, lastClickRow: -1}
 	m.saved = loadState(statePath)
+	m.restorePending = m.saved.Source != ""
 	for i, name := range m.modeNames() {
 		if name == m.saved.Visualizer {
 			m.mode = i
@@ -206,6 +212,20 @@ func (m *model) cycle(d int) {
 	m.persist()
 }
 
+// rememberSource records where the sources list is, so the next run reopens
+// it there.
+func (m *model) rememberSource() {
+	if m.restorePending || m.restoring {
+		return // the remembered place hasn't been reached yet; keep it
+	}
+	m.saved.Source, m.saved.SourceInCountry, m.saved.SourceCountry = m.provider, m.inCountry, m.country
+	m.saved.SourceSelected = ""
+	if l := m.lists[tabSources]; l.sel < len(l.rows) && !m.inResults {
+		m.saved.SourceSelected = l.rows[l.sel].key
+	}
+	m.persist()
+}
+
 func (m *model) persist() {
 	if m.statePath == "" {
 		return
@@ -246,11 +266,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.providers = msg.list
 		if m.provider == "" && !m.inResults {
 			m.lists[tabSources].rows = m.topRows()
+			if m.restorePending {
+				m.restorePending = false
+				for _, p := range m.providers {
+					if p.Key == m.saved.Source {
+						m.loading, m.restoring = true, true
+						return m, m.openProvider(p.Key, p.Name, false)
+					}
+				}
+			}
 		}
 
 	case playlistsMsg:
 		m.loading = false
 		if msg.err != nil {
+			m.restoring = false
 			m.say(msg.name + ": " + msg.err.Error())
 			return m, nil
 		}
@@ -266,7 +296,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.keepSel {
 			m.inCountry = false
 		}
+		if m.restoring {
+			m.restoring = false
+			m.inCountry, m.country = m.saved.SourceInCountry, m.saved.SourceCountry
+			selKey = m.saved.SourceSelected
+		}
 		rows := m.playlistRows(msg.provider, msg.list)
+		if m.inCountry && len(rows) == 0 { // the remembered country is gone
+			m.inCountry = false
+			rows = m.playlistRows(msg.provider, msg.list)
+		}
 		sel := firstSelectable(rows)
 		for i, r := range rows {
 			if selKey != "" && r.key == selKey {
@@ -275,6 +314,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.lists[tabSources] = listState{rows: rows, sel: sel}
 		m.lists[tabSources].move(0)
+		m.rememberSource()
 
 	case queueMsg:
 		if msg.err != nil {
@@ -463,7 +503,12 @@ func (m model) nextPreset() tea.Cmd {
 			i = (j + 1) % len(eqPresets)
 		}
 	}
-	name, c := eqPresets[i], m.c
+	return m.setPreset(eqPresets[i])
+}
+
+// setPreset applies one of cliamp's EQ presets; "Flat" turns the EQ off.
+func (m model) setPreset(name string) tea.Cmd {
+	c := m.c
 	return func() tea.Msg {
 		_, err := c.op("eq", map[string]string{"name": name})
 		return opMsg{label: "eq " + name, err: err, eq: true}
