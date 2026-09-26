@@ -28,6 +28,7 @@ const (
 	cSel
 	cKey
 	cFocus
+	cRGB // the cell's own 24-bit colour, from grid.fg (theme ramps)
 )
 
 var styles = map[cls]lipgloss.Style{
@@ -61,6 +62,7 @@ type grid struct {
 	// list row. shade is that background, a lipgloss colour string.
 	shaded []bool
 	shade  string
+	fg     []fx.RGB // foreground of cRGB cells
 }
 
 func newGrid(w, h int) *grid {
@@ -71,6 +73,7 @@ func newGrid(w, h int) *grid {
 	g.top = make([]fx.RGB, g.w*g.h)
 	g.bot = make([]fx.RGB, g.w*g.h)
 	g.shaded = make([]bool, g.w*g.h)
+	g.fg = make([]fx.RGB, g.w*g.h)
 	g.shade = "236"
 	for i := range g.ch {
 		g.ch[i] = ' '
@@ -123,6 +126,14 @@ func (g *grid) paint(x, y, n int, c cls) {
 	}
 }
 
+// setRGB writes a rune in its own 24-bit colour.
+func (g *grid) setRGB(x, y int, r rune, c fx.RGB) {
+	if x >= 0 && x < g.w && y >= 0 && y < g.h {
+		g.set(x, y, r, cRGB)
+		g.fg[y*g.w+x] = c
+	}
+}
+
 // shadeRow puts n cells from x, y on the selection background.
 func (g *grid) shadeRow(x, y, n int) {
 	for i := range n {
@@ -166,24 +177,27 @@ func (g *grid) String() string {
 	var b strings.Builder
 	for y := range g.h {
 		run := make([]rune, 0, g.w)
-		cur, curShaded := cNone, false
+		cur, curShaded, curFg := cNone, false, fx.RGB{}
 		inPx := false
 		var lt, lb fx.RGB
 		flush := func() {
 			if len(run) == 0 {
 				return
 			}
+			st, ok := styles[cur]
+			if cur == cRGB {
+				st, ok = lipgloss.NewStyle().Foreground(lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", curFg.R, curFg.G, curFg.B))), true
+			}
 			switch {
 			case curShaded:
-				st, ok := styles[cur]
 				if !ok {
 					st = lipgloss.NewStyle()
 				}
 				b.WriteString(st.Background(lipgloss.Color(g.shade)).Render(string(run)))
-			case cur == cNone:
+			case !ok:
 				b.WriteString(string(run))
 			default:
-				b.WriteString(styles[cur].Render(string(run)))
+				b.WriteString(st.Render(string(run)))
 			}
 			run = run[:0]
 		}
@@ -202,9 +216,9 @@ func (g *grid) String() string {
 				b.WriteString("\x1b[0m")
 				inPx = false
 			}
-			if g.cl[k] != cur || g.shaded[k] != curShaded {
+			if g.cl[k] != cur || g.shaded[k] != curShaded || (cur == cRGB && g.fg[k] != curFg) {
 				flush()
-				cur, curShaded = g.cl[k], g.shaded[k]
+				cur, curShaded, curFg = g.cl[k], g.shaded[k], g.fg[k]
 			}
 			run = append(run, g.ch[k])
 		}

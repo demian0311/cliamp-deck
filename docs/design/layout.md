@@ -44,7 +44,9 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
 
 ## Player
 - Rows: title (marquee) · source/station · time line (track: thin bar; stream: `● LIVE on air mm:ss`) ·
-  transport + volume. A stream drops `◄◄ ►►` (nothing to skip through). Volume is a braille bar (-30..+6 dB).
+  transport + volume. A stream drops `◄◄ ►►` (nothing to skip through). Volume is a braille bar (-30..+6 dB, no
+  number) directly under the meter, same x and width. Meter, volume and EQ bands colour along `rampStops` (theme
+  green → cyan → blue → magenta → red, 24-bit via `cRGB` cells). Playing marker is `»` (list rows and title).
 - Meter (title and source rows, right): two braille rows, a bar per dot row — highs on top, lows at the bottom —
   from cliamp's bands split into `meterRanges` ranges, each in dB below its own decaying peak over `meterRangeDB`.
   Each bar leaves a white peak dot that holds `peakHold` frames then slides back `peakFall` per frame.

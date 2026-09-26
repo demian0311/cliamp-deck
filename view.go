@@ -148,10 +148,12 @@ func (m model) drawPlayer(g *grid, r rect) {
 		return
 	}
 	mw := 0 // the meter's width, plus the gap before it
+	meterX, meterW := 0, 0
 	if iw > 34 && ih >= 2 {
-		mw = min(24, iw/4)
-		m.drawMeter(g, ix+iw-mw, iy, mw)
-		mw++
+		meterW = min(24, iw/4)
+		meterX = ix + iw - meterW
+		m.drawMeter(g, meterX, iy, meterW)
+		mw = meterW + 1
 	}
 	m.drawTitleLine(g, ix, iy, iw-mw)
 	if ih >= 2 {
@@ -174,12 +176,9 @@ func (m model) drawPlayer(g *grid, r rect) {
 			transport = "►  ‖  ■"
 		}
 		g.put(ix, iy+3, transport, cWhite)
-		if vw := min(10, iw-28); vw > 3 {
-			db := fmt.Sprintf(" %+.0fdB", m.snap.Volume)
-			x := ix + iw - vw - len(db)
-			g.put(x-4, iy+3, "vol", cCyan)
-			drawVolume(g, x, iy+3, vw, m.snap.Volume)
-			g.put(x+vw, iy+3, db, cCyan)
+		if meterW > 0 { // under the meter, the same width, so the two line up
+			g.put(meterX-4, iy+3, "vol", cDim)
+			m.drawVolume(g, meterX, iy+3, meterW, m.snap.Volume)
 		}
 	}
 }
@@ -196,30 +195,43 @@ func (m model) drawMeter(g *grid, x, y, w int) {
 		}
 		cells, peakOnly := brailleBars(fills, peaks, w)
 		for i, ch := range cells {
-			c := heightClass(float64(i) / float64(w) * 0.95)
 			switch {
 			case ch == 0x2800:
-				ch, c = '⣀', cDim
+				g.set(x+i, y+row, '⣀', cDim)
 			case peakOnly[i]:
-				c = cWhite
+				g.set(x+i, y+row, ch, cWhite)
+			default:
+				m.setRamp(g, x+i, y+row, ch, float64(i)/float64(max(1, w-1)))
 			}
-			g.set(x+i, y+row, ch, c)
 		}
 	}
 }
 
-// drawVolume is the volume as a braille bar in the meter's style, full height,
-// across -30..+6 dB.
-func drawVolume(g *grid, x, y, w int, db float64) {
+// drawVolume is the volume as a braille bar in the meter's style and colours,
+// full height, across -30..+6 dB.
+func (m model) drawVolume(g *grid, x, y, w int, db float64) {
 	f := clamp01((db + 30) / 36)
 	cells, _ := brailleBars([]float64{f, f, f, f}, nil, w)
 	for i, ch := range cells {
-		c := cCyan
 		if ch == 0x2800 {
-			ch, c = '⣀', cDim
+			g.set(x+i, y, '⣀', cDim)
+			continue
 		}
-		g.set(x+i, y, ch, c)
+		m.setRamp(g, x+i, y, ch, float64(i)/float64(max(1, w-1)))
 	}
+}
+
+// rampStops are the theme colours the meter, volume and EQ run through.
+var rampStops = []string{"green", "cyan", "blue", "magenta", "red"}
+
+// setRamp writes ch in the colour at pos (0..1) along rampStops, or along the
+// ANSI height classes when no theme is loaded.
+func (m model) setRamp(g *grid, x, y int, ch rune, pos float64) {
+	if m.theme == nil {
+		g.set(x, y, ch, heightClass(pos*0.95))
+		return
+	}
+	g.setRGB(x, y, ch, m.theme.Gradient(rampStops...).At(pos))
 }
 
 var eqLabels = [10]string{"70", "180", "320", "600", "1k", "3k", "6k", "12k", "14k", "16k"}
@@ -270,23 +282,29 @@ func (m model) drawEQ(g *grid, r rect) {
 			gain = m.snap.EQBands[i]
 		}
 		cx := x0 + i*cw
+		// Each band has its own colour along the ramp, low to high.
+		bar := func(y int, ch rune) {
+			for j := range 2 {
+				m.setRamp(g, cx+j, y, ch, float64(i)/9)
+			}
+		}
 		// Bars in eighths of a row, so ±1 dB shows even on a short panel.
 		eighths := int(math.Round(math.Abs(gain) / 12 * float64(half*8)))
 		n := eighths / 8
 		for k := 1; k <= n; k++ {
 			if gain > 0 {
-				g.put(cx, mid-k, "██", heightClass(0.3+0.7*float64(k)/float64(max(1, half))))
+				bar(mid-k, '█')
 			} else {
-				g.put(cx, mid+k, "██", cCyan)
+				bar(mid+k, '█')
 			}
 		}
 		if part := eighths % 8; part > 0 {
 			if gain > 0 {
-				g.put(cx, mid-n-1, strings.Repeat(string([]rune(" ▁▂▃▄▅▆▇")[part]), 2), heightClass(0.3+0.7*float64(n+1)/float64(max(1, half))))
+				bar(mid-n-1, []rune(" ▁▂▃▄▅▆▇")[part])
 			} else if part >= 4 {
-				g.put(cx, mid+n+1, "▀▀", cCyan)
+				bar(mid+n+1, '▀')
 			} else {
-				g.put(cx, mid+n+1, "▔▔", cCyan)
+				bar(mid+n+1, '▔')
 			}
 		}
 		if eighths == 0 { // a flat band gets a marker on the zero line
@@ -377,7 +395,7 @@ func (m model) drawSources(g *grid, r rect) {
 		case spin: // still loading: a throbber where the ► will go
 			mark, c = throbberFrame(time.Now())+" ", it.color
 		case it.current:
-			mark, c = "► ", cGreen
+			mark, c = "» ", cGreen
 		default:
 			c = it.color
 		}
@@ -496,7 +514,7 @@ func trackTitle(artist, title string) string {
 func (m model) stateGlyph() (string, cls) {
 	switch m.snap.State {
 	case "playing":
-		return "►", cGreen
+		return "»", cGreen
 	case "paused":
 		return "‖", cYellow
 	}

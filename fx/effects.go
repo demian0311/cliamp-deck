@@ -94,6 +94,12 @@ func (e *Fire) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	}
 }
 
+// metaballHues are the theme colours the metaballs cycle through.
+var metaballHues = []string{"red", "orange", "yellow", "green", "cyan", "blue", "magenta"}
+
+// metaballLap is how many seconds the colours take to go round the hues once.
+const metaballLap = 40.0
+
 // Metaballs: five blobs whose sizes follow their own band groups.
 // Size ← bass/mid/treble per ball, glow ← beat.
 type Metaballs struct{}
@@ -114,20 +120,33 @@ func (*Metaballs) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 			r2: r * r,
 		}
 	}
-	grad := th.Gradient("background", "magenta", "bright_magenta", "bright_foreground")
-	glow := grad.At(0.33)
+	// Each ball wears its own theme colour, and all of them drift round the
+	// theme's hues (one lap per metaballLap seconds), so over time every
+	// colour in the theme comes through. Where balls merge, colours blend by
+	// how much each contributes.
+	hues := th.Gradient(append(metaballHues, metaballHues[0])...)
+	var cols [5]RGB
+	for i := range cols {
+		p := t/metaballLap + float64(i)/float64(len(balls))
+		cols[i] = hues.At(p - math.Floor(p))
+	}
 	for y := range f.H {
 		for x := range f.W {
-			field := 0.0
-			for _, b := range balls {
-				dx, dy := float64(x)-b.x, float64(y)-b.y
-				field += b.r2 / (dx*dx + dy*dy + 1)
+			field, r, g, b := 0.0, 0.0, 0.0, 0.0
+			for i, bl := range balls {
+				dx, dy := float64(x)-bl.x, float64(y)-bl.y
+				w := bl.r2 / (dx*dx + dy*dy + 1)
+				field += w
+				r += w * float64(cols[i].R)
+				g += w * float64(cols[i].G)
+				b += w * float64(cols[i].B)
 			}
+			mix := RGB{uint8(r / field), uint8(g / field), uint8(b / field)}
 			var c RGB
 			if field > 1 {
-				c = grad.At(0.4 + math.Min(0.5, (field-1)*0.12) + a.Beat*0.25)
+				c = lerp(mix, th.Bright, math.Min(0.45, (field-1)*0.08)+a.Beat*0.2)
 			} else {
-				c = lerp(th.Background, glow, math.Min(0.45, field*0.35))
+				c = lerp(th.Background, mix, math.Min(0.4, field*0.3))
 			}
 			f.Px[y*f.W+x] = c
 		}
