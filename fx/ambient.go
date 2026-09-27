@@ -46,8 +46,8 @@ func blend(f *Frame, x, y int, c RGB, k float64) {
 // Unknown Pleasures sleeve, drawn in braille dots (a GlyphEffect: 2×4 dots a
 // cell). The front ridge is live, following the bands every frame; every
 // ridgeEvery it freezes and a new one takes the front, while the stack glides
-// back continuously. Ridges take their colour from the theme's hues by depth,
-// drifting over time, and fade as they recede.
+// back continuously. Colour is height, cool to hot, kept as a ridge recedes
+// and dims; both sides fade into the background.
 type Ridges struct {
 	lines [][]float64 // profiles per dot column, newest (live) first
 	seeds []float64   // each ridge's jagged-skyline seed
@@ -59,7 +59,7 @@ type Ridges struct {
 const (
 	ridgeCount = 16
 	ridgeEvery = 0.11 // seconds between new ridges
-	ridgeLap   = 24.0 // seconds for the colours to drift round the hues once
+	ridgeEdge  = 0.2  // share of the width each side takes to fade in
 )
 
 func (*Ridges) Name() string { return "ridges" }
@@ -127,17 +127,10 @@ func (e *Ridges) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 			prev = y
 		}
 	}
-	hues := th.Gradient(append(metaballHues, metaballHues[0])...)
-	colours := make([]RGB, len(e.lines))
-	for k := range colours {
-		depth := (float64(k) + phase) / ridgeCount
-		col := hues.At(frac(t/ridgeLap + depth*0.7))
-		col = lerp(col, th.Background, clamp01(depth*0.8))
-		if k == 0 {
-			col = lerp(col, th.Bright, 0.3)
-		}
-		colours[k] = col
-	}
+	// Colour is height: a ridge is cool where it lies flat and hot where it
+	// peaks, and keeps those colours as it recedes, only dimmer. Both sides
+	// dissolve into the background so the flat lines don't run to the edge.
+	heat := th.Gradient("blue", "cyan", "green", "yellow", "orange", "red")
 	bits := [4][2]rune{{0x01, 0x08}, {0x02, 0x10}, {0x04, 0x20}, {0x40, 0x80}}
 	for cy := range c.H {
 		for cx := range c.W {
@@ -152,11 +145,19 @@ func (e *Ridges) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 				}
 			}
 			i := cy*c.W + cx
-			if ch == 0 {
+			u := (float64(cx) + 0.5) / float64(c.W)
+			edge := smoothstep(0, ridgeEdge, u) * smoothstep(0, ridgeEdge, 1-u)
+			if ch == 0 || edge < 0.06 {
 				c.Ch[i] = 0
 				continue
 			}
-			c.Ch[i], c.Fg[i] = 0x2800+ch, colours[front]
+			depth := (float64(front) + phase) / ridgeCount
+			col := heat.At(clamp01(e.lines[front][cx*2] / 1.1))
+			if front == 0 {
+				col = lerp(col, th.Bright, 0.2)
+			}
+			col = lerp(th.Background, col, edge*(1-clamp01(depth*0.75)))
+			c.Ch[i], c.Fg[i] = 0x2800+ch, col
 		}
 	}
 }
