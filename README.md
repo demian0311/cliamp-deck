@@ -59,25 +59,21 @@ Screenshots in Omarchy's Slate Dark and Slate Light themes, playing a cliamp rad
 
 ## Install (Omarchy)
 
-cliamp ships with Omarchy, so all you need is the deck. This puts it in `~/.local/bin`, which Omarchy already has on
-your `PATH`:
+cliamp ships with Omarchy, so all you need is the deck. One line installs it to `~/.local/bin` and adds it to the
+app launcher (Super + Space) with cliamp's icon. No sudo, nothing to compile:
 
 ```sh
-mkdir -p ~/.local/bin
-curl -fL -o ~/.local/bin/cliamp-deck \
-  "https://github.com/demian0311/cliamp-deck/releases/latest/download/cliamp-deck-linux-$(uname -m)"
-chmod +x ~/.local/bin/cliamp-deck
-cliamp-deck
+curl -fsSL https://raw.githubusercontent.com/demian0311/cliamp-deck/master/install.sh | bash
 ```
 
-Optional — add it to the app launcher (Super + Space), with cliamp's icon:
+Run the same line again to update. To remove it and its launcher entry:
 
 ```sh
-omarchy-tui-install "cliamp deck" "$HOME/.local/bin/cliamp-deck" tile cliamp
+curl -fsSL https://raw.githubusercontent.com/demian0311/cliamp-deck/master/install.sh | bash -s -- --uninstall
 ```
 
-To update, run the `curl` line again. To remove: `rm ~/.local/bin/cliamp-deck` (and `omarchy-tui-remove` for the
-launcher).
+The script downloads the release binary for your CPU and checks it against the release's `SHA256SUMS`; read
+[`install.sh`](install.sh) first if you prefer.
 
 **Elsewhere, or from source** — needs Go; on Omarchy `mise use -g go@latest` provides it:
 
