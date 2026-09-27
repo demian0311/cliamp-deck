@@ -4,23 +4,62 @@ Alternative terminal UI for [cliamp](https://github.com/bjarneo/cliamp): a btop-
 player that re-flow with the terminal, plus a stage of audio-reactive demoscene effects painted in your Omarchy
 theme's colours. All audio, providers and the spectrum come from a running cliamp over its V2 IPC socket.
 
-![Fullscreen plasma reacting to a radio stream](docs/screenshots/stage-plasma.gif)
+![Six of the visualizers reacting to a radio stream, full screen](docs/screenshots/stage.gif)
+
+Twelve visualizers, all reacting to the music and all painted from your theme — plasma, tunnel, fire, metaballs,
+ridges, spectrum, timescope, vortex, water, synaesthesia, scope and fountain:
+
+![All twelve visualizers in a grid](docs/screenshots/effects.png)
+
+Browse cliamp's sources — internet radio by country, plus whatever else you have set up — with the player, levels
+and a visualizer alongside:
+
+![Wide layout: radio stations by country, player, and the fire visualizer](docs/screenshots/wide-sources.png)
 
 | | |
 |---|---|
-| ![Wide layout with metaballs, levels and EQ](docs/screenshots/wide-metaballs.png) | ![Wide layout with the fire effect](docs/screenshots/wide-fire.png) |
-| ![Quarter-size terminal: player, plasma stage, sources](docs/screenshots/quarter-plasma.png) | ![Fullscreen tunnel](docs/screenshots/full-tunnel.png) |
+| ![Slate Light theme with the EQ open and the vortex visualizer](docs/screenshots/light-eq.png) | ![A small terminal: player, spectrum and sources stacked](docs/screenshots/small.png) |
+| Light themes work too: the EQ open, vortex drawn as ink on paper. | A small terminal stacks the panels. |
 
-Shown in Omarchy's Slate Dark theme, playing a cliamp radio stream.
+Screenshots in Omarchy's Slate Dark and Slate Light themes, playing a cliamp radio stream.
 
-Needs [cliamp](https://github.com/bjarneo/cliamp) installed (Omarchy ships it) and a truecolor terminal. On start it
-asks the running cliamp which remote operations it supports, and exits with an update hint if any it uses are missing.
+## Install (Omarchy)
+
+cliamp ships with Omarchy, so all you need is the deck. This puts it in `~/.local/bin`, which Omarchy already has on
+your `PATH`:
 
 ```sh
-go install github.com/demian0311/cliamp-deck@latest
+mkdir -p ~/.local/bin
+curl -fL -o ~/.local/bin/cliamp-deck \
+  "https://github.com/demian0311/cliamp-deck/releases/latest/download/cliamp-deck-linux-$(uname -m)"
+chmod +x ~/.local/bin/cliamp-deck
+cliamp-deck
+```
+
+Optional — add it to the app launcher (Super + Space), with cliamp's icon:
+
+```sh
+omarchy-tui-install "cliamp deck" "$HOME/.local/bin/cliamp-deck" tile cliamp
+```
+
+To update, run the `curl` line again. To remove: `rm ~/.local/bin/cliamp-deck` (and `omarchy-tui-remove` for the
+launcher).
+
+**Elsewhere, or from source** — needs Go; on Omarchy `mise use -g go@latest` provides it:
+
+```sh
+GOBIN=~/.local/bin go install github.com/demian0311/cliamp-deck@latest
+```
+
+Any Linux with cliamp v2.0.1 or newer and a truecolor terminal works. On start the deck asks the running cliamp
+which remote operations it supports, and exits with an update hint if any it uses are missing.
+
+```sh
 cliamp-deck                                   # starts `cliamp --daemon` if nothing is running
 cliamp-deck --spawn=false --socket PATH       # attach to a specific instance only
 ```
+
+## Using it
 
 Layout: player on top, visualizer in the middle, sources at the bottom (side by side on very wide terminals).
 Click the visualizer, or press Enter on it, to let it take over the terminal; click or Esc to come back.
@@ -30,11 +69,12 @@ Quitting the deck stops the music: a headless `cliamp --daemon` exits with it, a
 
 Keys: space play/pause · n/p skip · , . seek · +/- volume · Tab focus player → visualizer → sources (the focused panel's title turns negative) ·
 in the player: ↑/↓ volume, ←/→ seek · e shows or hides the EQ from anywhere (←/→ band, ↑/↓ gain, p preset, 0 off) ·
-v or ‹ › cycle visualizers (←/→ when it has focus) · V take over ·
+v or ‹ › cycle visualizers (←/→ when it has focus) · V take over · { } move the picture 10 ms earlier/later
+against the sound (Bluetooth adds its own delay) ·
 in sources: ↑/↓ move, → open a source or country, ← back (Radio lists countries; open one for its stations), Enter play, a add to queue, A play next, [ ] tabs (sources/queue/history), / search,
 s set up a source with `cliamp setup` · q quit. Mouse: click and double-click rows, scroll the list, click tabs.
 
-The deck remembers your EQ, visualizer and last station or track in `~/.config/cliamp-deck/state.toml` (cliamp's
+The deck remembers your EQ, visualizer, sync delay and last station or track in `~/.config/cliamp-deck/state.toml` (cliamp's
 daemon does not save EQ). When it attaches it reapplies the EQ and, if nothing is playing, starts that station again.
 
 Stage effects live in `fx/` (interface: pixel frame + bass/mid/treble/beat + theme). Each cell is a `▀`
@@ -50,6 +90,8 @@ Known limits (2026-09-26):
 - Providers only appear once configured in cliamp's config (e.g. Spotify needs a `[spotify]` section).
 - Titles with wide (CJK/emoji) glyphs will misalign the grid.
 
-Screenshots are real captures: the deck runs in tmux against a cliamp playing into a PipeWire null sink
-(`PIPEWIRE_NODE=<null sink>`), `tmux capture-pane -e` dumps each frame, and `docs/screenshots/ansi2png.py`
-renders it with the current Omarchy theme's terminal palette.
+Screenshots are real captures: a second `cliamp --daemon` (own `CLIAMP_CONFIG_DIR`, `--audio-device` a PipeWire
+null sink, so nothing is heard) plays a radio stream, the deck runs in a private tmux server
+(`tmux -L shots`, `terminal-features '*:RGB'`) with `TMUX` unset and `COLORTERM=truecolor` — otherwise it detects
+tmux and falls back to 256 colours — and `tmux capture-pane -e` dumps each frame. `docs/screenshots/ansi2png.py`
+renders it with a theme's terminal palette (`THEME_DIR=<omarchy theme dir>`, default the applied theme).

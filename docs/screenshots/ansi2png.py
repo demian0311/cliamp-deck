@@ -9,8 +9,24 @@ FONT = ImageFont.truetype('/usr/share/fonts/TTF/JetBrainsMonoNerdFont-Regular.tt
 BOLD = ImageFont.truetype('/usr/share/fonts/TTF/JetBrainsMonoNerdFont-Bold.ttf', 16)
 
 def palette():
+    """The terminal palette of THEME_DIR (an Omarchy theme directory), or of the applied theme.
+    A theme that has not been applied has no generated foot.ini, so its colors.toml is mapped the
+    way Omarchy's foot.ini.tpl does."""
+    d = os.environ.get('THEME_DIR') or os.path.expanduser('~/.local/state/omarchy/current/theme')
+    if not os.path.exists(os.path.join(d, 'foot.ini')):
+        c = {}
+        for line in open(os.path.join(d, 'colors.toml')):
+            k, _, v = line.partition('=')
+            v = v.strip().strip('"\'').lstrip('#')
+            if re.fullmatch(r'[0-9a-fA-F]{6}', v):
+                c[k.strip()] = tuple(int(v[i:i+2], 16) for i in (0, 2, 4))
+        g = lambda *ks: next(c[k] for k in ks if k in c)
+        reg = [g('background'), g('red'), g('green'), g('yellow'), g('blue'), g('purple', 'magenta'), g('cyan'), g('foreground')]
+        bri = [g('muted', 'foreground'), g('bright_red', 'red'), g('bright_green', 'green'), g('bright_yellow', 'yellow'),
+               g('bright_blue', 'blue'), g('bright_magenta', 'magenta'), g('bright_cyan', 'cyan'), g('bright_foreground')]
+        return reg + bri, g('foreground'), g('background')
     p = {}
-    for line in open(os.path.expanduser('~/.local/state/omarchy/current/theme/foot.ini')):
+    for line in open(os.path.join(d, 'foot.ini')):
         k, _, v = line.strip().partition('=')
         v = v.split()[0] if v else ''
         if re.fullmatch(r'[0-9a-fA-F]{6}', v):
