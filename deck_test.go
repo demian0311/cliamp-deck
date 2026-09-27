@@ -66,6 +66,7 @@ func testModel(t *testing.T) model {
 	m.providers = []ipc.ProviderInfo{{Key: "radio", Name: "Radio", Searchable: true}, {Key: "local", Name: "Local"}}
 	m.lists[tabSources].rows = m.topRows()
 	m.w, m.h = 100, 28
+	m.saved.SyncMs = 0 // draw each spectrum frame as it arrives
 	return m
 }
 
@@ -536,5 +537,46 @@ func TestRenderFitsMidAnimation(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// Spectrum frames are held for SyncMs so the picture lands with the sound:
+// each call hands back the newest frame old enough, never one twice.
+func TestSpectrumWaitsOutTheSyncDelay(t *testing.T) {
+	m := testModel(t)
+	m.saved.SyncMs = 100
+	t0 := time.Now()
+	at := func(ms int) time.Time { return t0.Add(time.Duration(ms) * time.Millisecond) }
+	for i, step := range []struct {
+		ms   int
+		want float64 // band 0 of the frame drawn; 0 = nothing yet
+	}{{0, 0}, {33, 0}, {66, 0}, {99, 0}, {133, 2}, {166, 3}, {400, 6}, {433, 0}} {
+		got, ok := m.delayed(at(step.ms), []float64{float64(i + 1)})
+		if !ok && step.want != 0 || ok && got[0] != step.want {
+			t.Errorf("at %d ms: got %v %v, want frame %v", step.ms, got, ok, step.want)
+		}
+	}
+}
+
+// { and } nudge the delay from anywhere, clamp at 0, and are remembered.
+func TestSyncNudgeKeys(t *testing.T) {
+	m := testModel(t)
+	m.saved.SyncMs = syncDefaultMs
+	m = key(m, "}")
+	m = key(m, "}")
+	if m.saved.SyncMs != syncDefaultMs+2*syncStepMs {
+		t.Fatalf("after }}: %d", m.saved.SyncMs)
+	}
+	if got := loadState(m.statePath).SyncMs; got != m.saved.SyncMs {
+		t.Errorf("saved %d, want %d", got, m.saved.SyncMs)
+	}
+	for range syncDefaultMs/syncStepMs + 5 {
+		m = key(m, "{")
+	}
+	if m.saved.SyncMs != 0 {
+		t.Errorf("clamped at %d, want 0", m.saved.SyncMs)
+	}
+	if got := loadState(filepath.Join(t.TempDir(), "missing")).SyncMs; got != syncDefaultMs {
+		t.Errorf("no state file: %d, want %d", got, syncDefaultMs)
 	}
 }

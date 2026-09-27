@@ -465,7 +465,7 @@ func (m model) hints() [][2]string {
 		}
 		return append(keys, [2]string{"tab", "focus"})
 	case m.focus == focusVis:
-		return [][2]string{{"←→", "visual"}, {"⏎", "take over"}, {"␣", "play"}, {"e", "eq"}, {"/", "search"}, {"tab", "focus"}, {"q", "quit"}}
+		return [][2]string{{"←→", "visual"}, {"⏎", "take over"}, {"{ }", "sync"}, {"␣", "play"}, {"e", "eq"}, {"/", "search"}, {"tab", "focus"}, {"q", "quit"}}
 	}
 	if m.live() {
 		return [][2]string{{"␣", "play"}, {"↑↓", "vol"}, {"e", "eq"}, {"v", "visual"}, {"tab", "focus"}, {"q", "quit"}}

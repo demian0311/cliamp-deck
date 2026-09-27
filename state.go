@@ -30,7 +30,22 @@ type deckState struct {
 	// track), so the deck can start it again when it attaches to an idle
 	// cliamp. Stored as JSON, since cliamp's track.play takes the TrackInfo.
 	LastTrack *ipc.TrackInfo
+
+	// SyncMs is how long the deck holds each spectrum frame before drawing
+	// it, so the picture lands with the sound (see syncDefaultMs).
+	SyncMs int
 }
+
+// syncDefaultMs: cliamp analyses audio as it enters its 250 ms speaker buffer
+// (BufferMs default, config/config.go), not as it is heard, and its FFT window
+// and easing plus the deck's poll and frame take back ~110 ms of that. So the
+// bands arrive ~130 ms before the sound (issue #3, derived from cliamp v2.0.1
+// source on 2026-09-26, not measured end to end). `{` `}` nudge it per output.
+const (
+	syncDefaultMs = 130
+	syncStepMs    = 10
+	syncMaxMs     = 1000
+)
 
 func defaultStatePath() string {
 	dir := os.Getenv("XDG_CONFIG_HOME")
@@ -42,7 +57,7 @@ func defaultStatePath() string {
 }
 
 func loadState(path string) deckState {
-	var s deckState
+	s := deckState{SyncMs: syncDefaultMs}
 	f, err := os.Open(path)
 	if err != nil {
 		return s
@@ -69,6 +84,10 @@ func loadState(path string) deckState {
 			s.SourceInCountry = v == "true"
 		case "source_selected":
 			s.SourceSelected = unquote(v)
+		case "sync_ms":
+			if n, err := strconv.Atoi(v); err == nil {
+				s.SyncMs = max(0, min(n, syncMaxMs))
+			}
 		case "last_track":
 			var t ipc.TrackInfo
 			if json.Unmarshal([]byte(unquote(v)), &t) == nil && t.Path != "" {
@@ -99,9 +118,9 @@ func saveState(path string, s deckState) error {
 		last = string(b)
 	}
 	body := fmt.Sprintf("# cliamp-deck state, rewritten by the deck\nvisualizer = %q\neq_preset = %q\neq_bands = [%s]\n"+
-		"source = %q\nsource_country = %q\nsource_in_country = %t\nsource_selected = %q\nlast_track = %q\n",
+		"source = %q\nsource_country = %q\nsource_in_country = %t\nsource_selected = %q\nlast_track = %q\nsync_ms = %d\n",
 		s.Visualizer, s.EQPreset, strings.Join(bands, ", "),
-		s.Source, s.SourceCountry, s.SourceInCountry, s.SourceSelected, last)
+		s.Source, s.SourceCountry, s.SourceInCountry, s.SourceSelected, last, s.SyncMs)
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(body), 0o644); err != nil {
 		return err

@@ -173,6 +173,10 @@ func (m model) common(k string) (tea.Model, tea.Cmd) {
 		return m, m.run("", "seek", map[string]float64{"value": -5})
 	case "v":
 		m.cycle(1)
+	case "{":
+		m.nudgeSync(-syncStepMs)
+	case "}":
+		m.nudgeSync(syncStepMs)
 	}
 	return m, nil
 }

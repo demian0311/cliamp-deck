@@ -31,6 +31,12 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
   Ridges and spectrum are `fx.GlyphEffect`s: the deck calls `RenderCells` and draws coloured braille dots instead of
   blitting pixels.
 - Cycle: `v` anywhere; `←/→` when the visualizer has focus or has taken over; clickable `‹ n/N ›` on its frame.
+- Sync: `{` / `}` from anywhere move the picture 10 ms earlier / later against the sound (0–1000 ms, default 130,
+  saved as `sync_ms`). cliamp analyses audio as it enters its 250 ms speaker buffer, not as it is heard, so without
+  the hold the bands arrive ~130 ms before the sound (issue #3; derived from cliamp v2.0.1 source 2026-09-26, not
+  measured end to end). The deck queues each `spectrum.get` result and draws the newest one at least `sync_ms` old;
+  the meter follows the same delayed frames. Polling faster buys nothing: cliamp re-runs its FFT at most every 33 ms
+  (`TickAnalyze`). Bluetooth output adds its own delay, which is what the nudge is for.
 - Takeover: click the visualizer, Enter when it has focus, or `V` anywhere. It fills the terminal; click / Enter / Esc / `V`
   returns. A one-line bar (state, track, station, `‹ name ›`) shows for 3 s after any key or mouse move, then fades.
 
@@ -80,6 +86,7 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
 - Also the last thing playing (`last_track`, cliamp's TrackInfo as JSON, stream title and queue position dropped),
   saved whenever the playing path changes. On attach, if cliamp is neither playing nor paused, the deck sends
   `track.play` with it, so the last station starts again (added 2026-09-26).
+- Also the visual sync delay (`sync_ms`), saved on every `{` / `}`.
 - Not remembered: queue/history tab, takeover, EQ panel open.
 
 ## Deferred / upstream candidates

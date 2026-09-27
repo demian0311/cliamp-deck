@@ -76,6 +76,7 @@ type model struct {
 	cells    *fx.Cells
 	start    time.Time
 	lastSpec time.Time
+	specQ    []specFrame // spectrum frames waiting out the sync delay
 
 	themePath string
 	theme     *fx.Theme
@@ -411,17 +412,54 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// specFrame is a spectrum.get result and when it arrived.
+type specFrame struct {
+	at    time.Time
+	bands []float64
+}
+
+// delayed queues bands that arrived at now and returns the newest queued frame
+// at least SyncMs old, dropping it and everything before it. ok is false
+// while nothing has waited long enough.
+func (m *model) delayed(now time.Time, bands []float64) (out []float64, ok bool) {
+	m.specQ = append(m.specQ, specFrame{now, bands})
+	wait := time.Duration(m.saved.SyncMs) * time.Millisecond
+	i := -1
+	for j, f := range m.specQ {
+		if now.Sub(f.at) >= wait {
+			i = j
+		}
+	}
+	if i < 0 {
+		return nil, false
+	}
+	out = m.specQ[i].bands
+	m.specQ = append(m.specQ[:0], m.specQ[i+1:]...)
+	return out, true
+}
+
+// nudgeSync moves the picture later (d > 0) or earlier against the sound.
+func (m *model) nudgeSync(d int) {
+	m.saved.SyncMs = max(0, min(m.saved.SyncMs+d, syncMaxMs))
+	m.say(fmt.Sprintf("visual delay %d ms  ({ earlier · } later)", m.saved.SyncMs))
+	m.persist()
+}
+
 func (m model) onSpectrum(msg specMsg) (tea.Model, tea.Cmd) {
-	m.bands = msg.bands
-	m.updateLevels(msg.bands)
-	m.marq += 0.2
 	now := time.Now()
+	bands, ok := m.delayed(now, msg.bands)
+	if !ok {
+		return m, m.fetchSpec()
+	}
+	m.bands = bands
+	m.updateLevels(bands)
+	m.marq += 0.2
 	dt := 1.0 / 30
 	if !m.lastSpec.IsZero() {
 		dt = min(0.1, now.Sub(m.lastSpec).Seconds())
 	}
 	m.lastSpec = now
-	a := m.an.Update(msg.bands, dt) // raw: the analyzer normalises per signal
+	a := m.an.Update(bands, dt) // raw: the analyzer normalises per signal
 	if m.w > 0 && m.mode < len(m.effects) {
 		if in := m.layout().visInner(); !in.empty() {
 			t := now.Sub(m.start).Seconds()
