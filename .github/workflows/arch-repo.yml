@@ -212,7 +212,9 @@ jobs:
             # needed. makepkg sources /etc/makepkg.conf top to bottom, so the
             # LAST CARCH= line wins.
             echo "CARCH=\"$arch\"" >> /etc/makepkg.conf
-            sudo -u builder makepkg --noconfirm --clean
+            # --nodeps: cliamp lives in the [omarchy] repo, which this container
+            # lacks; it is a runtime dependency only, and package() just installs.
+            sudo -u builder makepkg --noconfirm --clean --nodeps
           done
           ls -la ./*.pkg.tar.zst
 
