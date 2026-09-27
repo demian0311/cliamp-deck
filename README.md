@@ -101,7 +101,7 @@ Click the visualizer, or press Enter on it, to let it take over the terminal; cl
 Quitting the deck stops the music: a headless `cliamp --daemon` exits with it, a cliamp TUI just stops playing
 (`--keep-playing` leaves it running).
 
-Keys: space play/pause · n/p skip · , . seek · +/- volume · Tab focus player → visualizer → sources (the focused panel's title turns negative) ·
+Keys: space play/pause · n/p skip · , . seek · +/- volume · Tab focus player → visualizer → sources (the focused panel's title sits on an accent tint) ·
 in the player: ↑/↓ volume, ←/→ seek · e shows or hides the EQ from anywhere (←/→ band, ↑/↓ gain, p preset, 0 off) ·
 v or ‹ › cycle visualizers (←/→ when it has focus) · V take over · { } move the picture 10 ms earlier/later
 against the sound (Bluetooth adds its own delay) ·

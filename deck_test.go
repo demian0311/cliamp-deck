@@ -10,8 +10,10 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/bjarneo/cliamp/ipc"
+	"github.com/demian0311/cliamp-deck/fx"
 )
 
 func TestLayoutShapes(t *testing.T) {
@@ -386,7 +388,7 @@ func TestRadioCountriesOpenWithArrows(t *testing.T) {
 }
 
 // e shows and hides the EQ; while shown it takes the player's arrows, and tab
-// still moves focus. The focused panel's title turns negative.
+// still moves focus. The focused panel's title takes the accent tint.
 func TestEKeyTogglesTheEQ(t *testing.T) {
 	m := testModel(t)
 	m.focus = focusVis
@@ -578,5 +580,21 @@ func TestSyncNudgeKeys(t *testing.T) {
 	}
 	if got := loadState(filepath.Join(t.TempDir(), "missing")).SyncMs; got != syncDefaultMs {
 		t.Errorf("no state file: %d, want %d", got, syncDefaultMs)
+	}
+}
+
+// The focused title is tinted toward the theme accent, not reverse video.
+func TestSelTintsTowardAccent(t *testing.T) {
+	th, _ := fx.LoadTheme("/nonexistent")
+	g := newGrid(4, 1)
+	g.useTheme(th)
+	g.put(0, 0, "ab", cSel)
+	out := g.String()
+	if strings.Contains(out, "\x1b[7m") {
+		t.Errorf("focused title still reverse video: %q", out)
+	}
+	bg, acc := th.Background, th.Colors["accent"]
+	if got, want := g.sel.GetBackground(), lipgloss.Color(mixHex(bg, acc, 30)); got != want {
+		t.Errorf("tint %v, want %v", got, want)
 	}
 }

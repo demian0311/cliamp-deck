@@ -62,7 +62,8 @@ type grid struct {
 	// list row. shade is that background, a lipgloss colour string.
 	shaded []bool
 	shade  string
-	fg     []fx.RGB // foreground of cRGB cells
+	sel    lipgloss.Style // cSel: focused titles and the active tab
+	fg     []fx.RGB       // foreground of cRGB cells
 }
 
 func newGrid(w, h int) *grid {
@@ -75,6 +76,7 @@ func newGrid(w, h int) *grid {
 	g.shaded = make([]bool, g.w*g.h)
 	g.fg = make([]fx.RGB, g.w*g.h)
 	g.shade = "236"
+	g.sel = styles[cSel]
 	for i := range g.ch {
 		g.ch[i] = ' '
 	}
@@ -144,14 +146,26 @@ func (g *grid) shadeRow(x, y, n int) {
 }
 
 // useTheme shades selections a step from the theme's background toward its
-// foreground, so the highlight reads as a tint in any theme.
+// foreground, so the highlight reads as a tint in any theme. Focused titles
+// and the active tab get a stronger tint toward the accent instead of reverse
+// video, which on a dark theme is the brightest block on screen.
 func (g *grid) useTheme(th *fx.Theme) {
 	if th == nil {
 		return
 	}
 	bg, fg := th.Background, th.Bright
-	mix := func(a, b uint8) uint8 { return uint8(int(a) + (int(b)-int(a))*14/100) }
-	g.shade = fmt.Sprintf("#%02x%02x%02x", mix(bg.R, fg.R), mix(bg.G, fg.G), mix(bg.B, fg.B))
+	g.shade = mixHex(bg, fg, 14)
+	if accent, ok := th.Colors["accent"]; ok {
+		g.sel = lipgloss.NewStyle().Bold(true).
+			Foreground(lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", fg.R, fg.G, fg.B))).
+			Background(lipgloss.Color(mixHex(bg, accent, 30)))
+	}
+}
+
+// mixHex is a moved pct percent of the way to b, as a lipgloss colour string.
+func mixHex(a, b fx.RGB, pct int) string {
+	mix := func(x, y uint8) uint8 { return uint8(int(x) + (int(y)-int(x))*pct/100) }
+	return fmt.Sprintf("#%02x%02x%02x", mix(a.R, b.R), mix(a.G, b.G), mix(a.B, b.B))
 }
 
 func (g *grid) box(x, y, w, h int, title string, c, tc cls) {
@@ -185,6 +199,9 @@ func (g *grid) String() string {
 				return
 			}
 			st, ok := styles[cur]
+			if cur == cSel {
+				st = g.sel
+			}
 			if cur == cRGB {
 				st, ok = lipgloss.NewStyle().Foreground(lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", curFg.R, curFg.G, curFg.B))), true
 			}

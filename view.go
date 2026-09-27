@@ -62,7 +62,7 @@ func (m model) render() string {
 }
 
 // frame draws a panel border, highlighted when the panel has keyboard focus;
-// the focused panel's title turns negative.
+// the focused panel's title sits on an accent tint.
 func (m model) drawFrame(g *grid, r rect, title string, c cls, area focusArea) {
 	tc := cTitle
 	if m.has(area) {
