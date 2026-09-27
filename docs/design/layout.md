@@ -20,12 +20,14 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
 
 ## Visualizer
 - One cycle, `fx.Stock()` in order: plasma → terrain → fire → metaballs → ridges → spectrum → timescope → vortex →
-  water → synaesthesia → scope → fountain → aurora → skyline → coral → flow → life → moire. Saved names no longer
-  in the cycle fall back to the first.
+  water → synaesthesia → scope → fountain → aurora → skyline → coral → flow → life → moire → braille. Saved names no
+  longer in the cycle fall back to the first.
   2026-09-27: tunnel removed. Terrain (voxel flyover, `fx/scenes.go`) took its slot; aurora (curtains over three
   parallax ranges) and skyline (flyover of a city whose windows follow random bands) share its voxel column march.
   Coral (Gray–Scott), flow (particle field), life (Conway) and moire (two ring sets in theme hues) are in
   `fx/growth.go`. Picked from a browser mockup; radar was dropped there.
+  Braille (a full pane of braille whose dot density follows the bands, theme hues drifting through it) is a
+  `fx.GlyphEffect` in `fx/growth.go`.
   2026-09-26: the braille spectrum was removed, then aurora, ripples, rain and warp were replaced by Winamp-era
   effects — vortex (Geiss/MilkDrop feedback), water (AVS Water Bump), fountain (AVS Dot Fountain), spectrum
   (Winamp 2 bars with peak caps; a saved `visualizer = "spectrum"` now lands on it), timescope (AVS spectrogram)
@@ -33,7 +35,7 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
   browser mockup replaying the recorded captures.
   `TestEffectsFollowTheMusic` replays the recorded radio and fails any effect whose picture stops tracking the beat
   or loudness (ridges, scope and timescope exempt: they answer through shape or history).
-  Ridges and spectrum are `fx.GlyphEffect`s: the deck calls `RenderCells` and draws coloured braille dots instead of
+  Ridges, spectrum and braille are `fx.GlyphEffect`s: the deck calls `RenderCells` and draws coloured braille dots instead of
   blitting pixels.
 - Cycle: `v` anywhere; `←/→` when the visualizer has focus or has taken over; clickable `‹ n/N ›` on its frame.
 - Sync: `{` / `}` from anywhere move the picture 10 ms earlier / later against the sound (0–1000 ms, default 130,

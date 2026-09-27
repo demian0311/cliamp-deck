@@ -40,7 +40,7 @@ A wide terminal puts the visualizer beside the other panels (above). A narrower 
 
 Over fifteen visualizers, all reacting to the music and all painted from your theme — plasma, terrain, fire,
 metaballs, ridges, spectrum, timescope, vortex, water, synaesthesia, scope, fountain, aurora, skyline, coral, flow,
-life and moire:
+life, moire and braille:
 
 ![Twelve of the visualizers in a grid, including the since-removed tunnel](docs/screenshots/effects.png)
 
