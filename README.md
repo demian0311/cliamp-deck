@@ -1,5 +1,10 @@
 # cliamp-deck
 
+<p align="center">
+  <img src="docs/screenshots/narrow.gif" width="440" alt="The deck in a narrow window: player, EQ, a Winamp-style spectrum turning into fire and metaballs, and a radio playlist">
+</p>
+<p align="center"><sub>Player, EQ, visualizer and playlist stacked in one narrow window, the way Winamp sat on a 2000s desktop.</sub></p>
+
 Alternative terminal UI for [cliamp](https://github.com/bjarneo/cliamp): a btop-style grid and a Winamp-style
 player that re-flow with the terminal, plus a stage of audio-reactive demoscene effects painted in your Omarchy
 theme's colours. All audio, providers and the spectrum come from a running cliamp over its V2 IPC socket.
