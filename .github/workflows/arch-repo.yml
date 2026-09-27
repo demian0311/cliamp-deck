@@ -219,7 +219,7 @@ jobs:
             # lacks; it is a runtime dependency only, and package() just installs.
             sudo -u builder makepkg --noconfirm --clean --nodeps
           done
-          ls -la ./*.pkg.tar.zst
+          ls -la ./*.pkg.tar.zst 2>/dev/null || echo "Nothing built this run; every package is reused."
 
       # The signing key is the owner's, and the repository is consumable
       # without it — just not verifiable. When ARCH_SIGNING_KEY is absent this
@@ -298,7 +298,7 @@ jobs:
           # A no-version re-index can build nothing at all (everything
           # reused), so an empty glob is normal here, not an error.
           for pkg in ../packaging/arch/*.pkg.tar.zst; do
-            [ -e "$pkg" ] && cp "$pkg" .
+            if [ -e "$pkg" ]; then cp "$pkg" .; fi
           done
           [ -e ../cliamp-deck.gpg ] && cp ../cliamp-deck.gpg . || true
 
