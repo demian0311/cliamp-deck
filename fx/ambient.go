@@ -44,10 +44,13 @@ func blend(f *Frame, x, y int, c RGB, k float64) {
 
 // Ridges: stacked waveform lines scrolling back into the dark, like the
 // Unknown Pleasures sleeve, drawn in braille dots (a GlyphEffect: 2×4 dots a
-// cell). Each ridge is a moment of the spectrum, so the song's shape stays
-// readable a couple of seconds back.
+// cell). The front ridge is live, following the bands every frame; every
+// ridgeEvery it freezes and a new one takes the front, while the stack glides
+// back continuously. Ridges take their colour from the theme's hues by depth,
+// drifting over time, and fade as they recede.
 type Ridges struct {
-	lines [][]float64 // profiles per dot column, newest first
+	lines [][]float64 // profiles per dot column, newest (live) first
+	seeds []float64   // each ridge's jagged-skyline seed
 	since float64
 	dots  []int8 // ridge index owning each dot, -1 for none
 	cells Cells  // Render's pixel fallback draws through this
@@ -56,6 +59,7 @@ type Ridges struct {
 const (
 	ridgeCount = 16
 	ridgeEvery = 0.11 // seconds between new ridges
+	ridgeLap   = 24.0 // seconds for the colours to drift round the hues once
 )
 
 func (*Ridges) Name() string { return "ridges" }
@@ -66,28 +70,34 @@ func (e *Ridges) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 		return
 	}
 	if len(e.lines) > 0 && len(e.lines[0]) != W {
-		e.lines = nil
+		e.lines, e.seeds = nil, nil
 	}
-	if e.since += dt; e.since >= ridgeEvery || len(e.lines) == 0 {
-		e.since = 0
-		prof := make([]float64, W)
-		seed := rand.Float64() * 100 // each ridge gets its own jagged skyline
-		for x := range prof {
-			b := a.Bass
-			if n := len(a.Bands); n > 1 { // interpolate so the profile has no band steps
-				pos := float64(x) / float64(max(1, W-1)) * float64(n-1)
-				i := min(int(pos), n-2)
-				b = clamp01(a.Bands[i] + (a.Bands[i+1]-a.Bands[i])*(pos-float64(i)))
-			}
-			d := (float64(x) - float64(W)/2) / (float64(W) * 0.2)
-			u := float64(x) * 192 / float64(W) // noise in fixed units, whatever the width
-			jag := 0.5 + 0.3*math.Sin(u*0.45+seed) + 0.2*math.Sin(u*1.15+seed*1.7)
-			prof[x] = math.Exp(-d*d) * (0.3 + b) * (0.4 + jag)
+	e.since += dt
+	if e.since >= ridgeEvery || len(e.lines) == 0 { // freeze the live ridge, start a new one
+		e.since = math.Mod(e.since, ridgeEvery)
+		live := make([]float64, W)
+		if len(e.lines) > 0 {
+			copy(live, e.lines[0])
 		}
-		e.lines = append([][]float64{prof}, e.lines...)
-		if len(e.lines) > ridgeCount {
-			e.lines = e.lines[:ridgeCount]
+		e.lines = append([][]float64{live}, e.lines...)
+		e.seeds = append([]float64{rand.Float64() * 100}, e.seeds...)
+		if len(e.lines) > ridgeCount+1 { // one spare to glide out at the back
+			e.lines, e.seeds = e.lines[:ridgeCount+1], e.seeds[:ridgeCount+1]
 		}
+	}
+	live, seed := e.lines[0], e.seeds[0]
+	for x := range live {
+		b := a.Bass
+		if n := len(a.Bands); n > 1 { // interpolate so the profile has no band steps
+			pos := float64(x) / float64(max(1, W-1)) * float64(n-1)
+			i := min(int(pos), n-2)
+			b = clamp01(a.Bands[i] + (a.Bands[i+1]-a.Bands[i])*(pos-float64(i)))
+		}
+		d := (float64(x) - float64(W)/2) / (float64(W) * 0.2)
+		u := float64(x) * 192 / float64(W) // noise in fixed units, whatever the width
+		jag := 0.5 + 0.3*math.Sin(u*0.45+seed) + 0.2*math.Sin(u*1.15+seed*1.7)
+		target := math.Exp(-d*d) * (0.3 + b) * (0.4 + jag)
+		live[x] += (target - live[x]) * math.Min(1, dt*14) // smooth, but quick enough to ride the beat
 	}
 	if len(e.dots) != W*H {
 		e.dots = make([]int8, W*H)
@@ -95,11 +105,12 @@ func (e *Ridges) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 	for i := range e.dots {
 		e.dots[i] = -1
 	}
-	top := float64(H) * 0.22
-	spacing := (float64(H) - top - 2) / ridgeCount
+	phase := e.since / ridgeEvery
+	bottom, top := float64(H)-2, float64(H)*0.22
+	spacing := (bottom - top) / ridgeCount
 	amp := float64(H) * 0.19
 	for k := len(e.lines) - 1; k >= 0; k-- { // back to front, each hiding what is behind it
-		base := top + float64(ridgeCount-1-k)*spacing
+		base := bottom - (float64(k)+phase)*spacing
 		prev := 0
 		for x := range W {
 			y := int(math.Round(base - e.lines[k][x]*amp))
@@ -116,12 +127,22 @@ func (e *Ridges) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 			prev = y
 		}
 	}
-	fg, bg, cyan := th.Color("foreground"), th.Background, th.Color("cyan")
+	hues := th.Gradient(append(metaballHues, metaballHues[0])...)
+	colours := make([]RGB, len(e.lines))
+	for k := range colours {
+		depth := (float64(k) + phase) / ridgeCount
+		col := hues.At(frac(t/ridgeLap + depth*0.7))
+		col = lerp(col, th.Background, clamp01(depth*0.8))
+		if k == 0 {
+			col = lerp(col, th.Bright, 0.3)
+		}
+		colours[k] = col
+	}
 	bits := [4][2]rune{{0x01, 0x08}, {0x02, 0x10}, {0x04, 0x20}, {0x40, 0x80}}
 	for cy := range c.H {
 		for cx := range c.W {
 			var ch rune
-			front := int8(ridgeCount)
+			front := int8(len(e.lines))
 			for r := range 4 {
 				for s := range 2 {
 					if k := e.dots[(cy*4+r)*W+cx*2+s]; k >= 0 {
@@ -135,11 +156,7 @@ func (e *Ridges) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 				c.Ch[i] = 0
 				continue
 			}
-			col := lerp(fg, bg, float64(front)/(ridgeCount+2))
-			if front == 0 {
-				col = lerp(fg, cyan, 0.35)
-			}
-			c.Ch[i], c.Fg[i] = 0x2800+ch, col
+			c.Ch[i], c.Fg[i] = 0x2800+ch, colours[front]
 		}
 	}
 }
