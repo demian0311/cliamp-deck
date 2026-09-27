@@ -4,12 +4,41 @@ Alternative terminal UI for [cliamp](https://github.com/bjarneo/cliamp): a btop-
 player that re-flow with the terminal, plus a stage of audio-reactive demoscene effects painted in your Omarchy
 theme's colours. All audio, providers and the spectrum come from a running cliamp over its V2 IPC socket.
 
+## The display
+
+![The deck side by side on a wide terminal, each panel outlined and numbered](docs/screenshots/layout-side.png)
+
+<table>
+<tr>
+<td width="55%"><img src="docs/screenshots/layout-stack.png" alt="The same panels stacked on a narrower terminal, outlined and numbered"></td>
+<td>
+
+1. **Player**: what's playing and from which station, live or elapsed time, the level meters and volume, and
+   the play/pause/stop controls.
+2. **EQ**: ten bands with cliamp's presets. `e` opens and closes it from anywhere; it is hidden until you want it.
+3. **Visualizer**: `v` or the `‹ n/12 ›` arrows cycle the twelve effects; click it or press Enter to take over the
+   whole terminal.
+4. **Sources**: cliamp's sources (radio by country, plus anything else you have set up), with **queue** and
+   **history** tabs.
+5. **Status line**: the keys for whichever panel has focus (Tab moves focus), and whether cliamp is connected.
+
+A wide terminal puts the visualizer beside the other panels (above). A narrower or taller one stacks them
+(left). Resize the terminal and the panels move to fit.
+
+</td>
+</tr>
+</table>
+
+## Visualizers
+
 ![Six of the visualizers reacting to a radio stream, full screen](docs/screenshots/stage.gif)
 
 Twelve visualizers, all reacting to the music and all painted from your theme — plasma, tunnel, fire, metaballs,
 ridges, spectrum, timescope, vortex, water, synaesthesia, scope and fountain:
 
 ![All twelve visualizers in a grid](docs/screenshots/effects.png)
+
+## Sources and themes
 
 Browse cliamp's sources — internet radio by country, plus whatever else you have set up — with the player, levels
 and a visualizer alongside:
