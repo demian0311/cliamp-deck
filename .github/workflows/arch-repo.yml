@@ -16,9 +16,8 @@ name: Arch package repository
 #     step), so the version-lookup here polls THIS repo's own release for
 #     cliamp-deck-linux-x86_64, cliamp-deck-linux-aarch64 and SHA256SUMS
 #     instead of querying npm
-#   - it builds packages for BOTH x86_64 and aarch64 (dgmo only ever built
-#     x86_64) by overriding CARCH before each makepkg run — there is no
-#     compilation, just `install`, so no cross toolchain is needed
+#   - the pacman repo is x86_64 only: one database cannot hold two arches of
+#     the same pkgname (see the build loop). aarch64 users use install.sh
 #   - it also fires on `release: published` (tag vX.Y.Z, stripped of the `v`),
 #     in addition to workflow_dispatch, guarded against retriggering itself
 #     when this workflow's own `arch-repo` release is (re)published
@@ -168,7 +167,7 @@ jobs:
           REL=$(awk -F= '/^pkgrel=/{print $2}' packaging/arch/PKGBUILD)
           EXISTING=$(gh release view arch-repo --repo "$GITHUB_REPOSITORY" \
             --json assets --jq '.assets[].name' 2>/dev/null || true)
-          for arch in x86_64 aarch64; do
+          for arch in x86_64; do
             NAME="cliamp-deck-${VERSION}-${REL}-${arch}.pkg.tar.zst"
             echo "filename_${arch}=$NAME" >> "$GITHUB_OUTPUT"
             if printf '%s\n' "$EXISTING" | grep -qxF "$NAME"; then
@@ -197,7 +196,11 @@ jobs:
           ALREADY_AARCH64="${{ steps.published.outputs.already_aarch64 }}"
 
           cd packaging/arch
-          for arch in x86_64 aarch64; do
+          # x86_64 only. The database has no $arch in its Server URL, so it
+          # holds ONE entry per pkgname: an aarch64 build of the same version
+          # replaces the x86_64 one and repo-add drops it as superseded (seen
+          # on the first run, 2026-09-27). aarch64 users use install.sh.
+          for arch in x86_64; do
             case "$arch" in
               x86_64)  already="$ALREADY_X86_64" ;;
               aarch64) already="$ALREADY_AARCH64" ;;

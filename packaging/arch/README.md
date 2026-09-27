@@ -126,10 +126,11 @@ on you.
   shell variable in the "Build the bootstrap package" step, so they can never
   disagree — the mismatch guard has nothing left to guard and was dropped
   rather than ported.
-- **Builds both `x86_64` and `aarch64`** in one `ubuntu-latest` (x86_64)
-  runner via a `CARCH` override, since dgmo only ever built `x86_64` (its
-  `package()` step needs an actual node/npm toolchain per target, this one
-  does not).
+- **x86_64 only.** The Server URL has no `$arch`, so the database holds one
+  entry per pkgname and an aarch64 build of the same version supersedes the
+  x86_64 one (repo-add dropped it on the first run, 2026-09-27). Serving
+  aarch64 needs a per-arch database, e.g. tags `arch-repo-$arch`; until then
+  aarch64 users use install.sh. PKGBUILD keeps both arches for `makepkg -si`.
 - **The `arch-repo` release is created with `--prerelease` on first run.**
   dgmo's equivalent release is a plain non-prerelease release that merely
   hasn't become "Latest" because newer real releases keep publishing after
