@@ -8,8 +8,10 @@ url='https://github.com/demian0311/cliamp-deck'
 license=('MIT')
 depends=('cliamp' 'glibc')
 makedepends=('go')
-source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('324bea08464f0ede4ee9eb4c9012223f29ca6df31d3a11198a3c976a969dc034')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz"
+        "$pkgname.desktop")
+sha256sums=('324bea08464f0ede4ee9eb4c9012223f29ca6df31d3a11198a3c976a969dc034'
+            '3628aeeea4ef05755bf57b5a2a69fa2b9970bc5c27e40c899425aec6b95f2a36')
 
 prepare() {
   cd "$pkgname-$pkgver"
@@ -37,6 +39,7 @@ check() {
 package() {
   cd "$pkgname-$pkgver"
   install -Dm755 "$pkgname" "$pkgdir/usr/bin/$pkgname"
+  install -Dm644 "$srcdir/$pkgname.desktop" "$pkgdir/usr/share/applications/$pkgname.desktop"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
 }

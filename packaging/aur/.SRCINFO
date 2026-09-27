@@ -1,6 +1,6 @@
 pkgbase = cliamp-deck
 	pkgdesc = A btop × Winamp terminal face for cliamp, with themed demoscene visualizers
-	pkgver = 0.1.3
+	pkgver = 0.2.0
 	pkgrel = 1
 	url = https://github.com/demian0311/cliamp-deck
 	arch = x86_64
@@ -9,7 +9,9 @@ pkgbase = cliamp-deck
 	makedepends = go
 	depends = cliamp
 	depends = glibc
-	source = cliamp-deck-0.1.3.tar.gz::https://github.com/demian0311/cliamp-deck/archive/v0.1.3.tar.gz
-	sha256sums = 11f43085b6fb51cb7bc41e6edc8adc8c6c2b271d47ab43b2f7f7bce804818019
+	source = cliamp-deck-0.2.0.tar.gz::https://github.com/demian0311/cliamp-deck/archive/v0.2.0.tar.gz
+	source = cliamp-deck.desktop
+	sha256sums = 324bea08464f0ede4ee9eb4c9012223f29ca6df31d3a11198a3c976a969dc034
+	sha256sums = 3628aeeea4ef05755bf57b5a2a69fa2b9970bc5c27e40c899425aec6b95f2a36
 
 pkgname = cliamp-deck
