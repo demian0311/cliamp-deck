@@ -2,6 +2,7 @@ package fx
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -125,4 +126,60 @@ func TestStockEffectsPaintTheWholeFrame(t *testing.T) {
 			t.Errorf("%s: only %d distinct colours", e.Name(), len(seen))
 		}
 	}
+}
+
+// Replays the recorded radio through each effect and checks the picture
+// follows the music: how much it changes, or how bright it is, must track the
+// beat or the loudness. Aurora and ripples scored r ≈ 0.05 and ≈ 0 here and
+// read as not listening. Ridges and scope answer through shape, which this
+// does not measure; tunnel through its colour cycle.
+func TestEffectsFollowTheMusic(t *testing.T) {
+	th, _ := LoadTheme("/nonexistent")
+	shape := map[string]bool{"ridges": true, "scope": true, "tunnel": true}
+	for _, name := range []string{"dancing-through-it-10s.ndjson", "thunderstruck-20s.ndjson"} {
+		caps := loadCapture(t, name)
+		for _, e := range Stock() {
+			if shape[e.Name()] {
+				continue
+			}
+			an, f := &Analyzer{}, &Frame{}
+			f.Resize(96, 48)
+			prev := make([]float64, len(f.Px))
+			var change, bright, beat, energy []float64
+			for i, b := range caps {
+				a := an.Update(b, 1.0/30)
+				e.Render(f, a, float64(i)/30, 1.0/30, th)
+				var d, l float64
+				for j, p := range f.Px {
+					y := 0.3*float64(p.R) + 0.59*float64(p.G) + 0.11*float64(p.B)
+					d += math.Abs(y - prev[j])
+					l += y
+					prev[j] = y
+				}
+				if i >= 30 { // past the analyzer's warm-up
+					change, bright = append(change, d), append(bright, l)
+					beat, energy = append(beat, a.Beat), append(energy, (a.Bass+a.Mid+a.Treble)/3)
+				}
+			}
+			best := max(pearson(change, beat), pearson(change, energy), pearson(bright, energy), pearson(bright, beat))
+			if best < 0.4 {
+				t.Errorf("%s on %s: best correlation with the music %.2f, want ≥ 0.4", e.Name(), name, best)
+			}
+		}
+	}
+}
+
+func pearson(a, b []float64) float64 {
+	var ma, mb float64
+	for i := range a {
+		ma += a[i] / float64(len(a))
+		mb += b[i] / float64(len(b))
+	}
+	var ab, aa, bb float64
+	for i := range a {
+		ab += (a[i] - ma) * (b[i] - mb)
+		aa += (a[i] - ma) * (a[i] - ma)
+		bb += (b[i] - mb) * (b[i] - mb)
+	}
+	return ab / math.Sqrt(aa*bb+1e-12)
 }
