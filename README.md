@@ -25,6 +25,9 @@ cliamp-deck --spawn=false --socket PATH       # attach to a specific instance on
 Layout: player on top, visualizer in the middle, sources at the bottom (side by side on very wide terminals).
 Click the visualizer, or press Enter on it, to let it take over the terminal; click or Esc to come back.
 
+Quitting the deck stops the music: a headless `cliamp --daemon` exits with it, a cliamp TUI just stops playing
+(`--keep-playing` leaves it running).
+
 Keys: space play/pause · n/p skip · , . seek · +/- volume · Tab focus player → visualizer → sources (the focused panel's title turns negative) ·
 in the player: ↑/↓ volume, ←/→ seek · e shows or hides the EQ from anywhere (←/→ band, ↑/↓ gain, p preset, 0 off) ·
 v or ‹ › cycle visualizers (←/→ when it has focus) · V take over ·

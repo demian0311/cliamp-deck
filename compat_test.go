@@ -6,6 +6,7 @@ import (
 	"net"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -70,5 +71,29 @@ func TestCompatRejectsAnOldProtocol(t *testing.T) {
 	err := checkCompat(client{sock: sock})
 	if err == nil || !strings.Contains(err.Error(), "doesn't speak the V2 remote API") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+// Quitting stops a cliamp that is not a headless daemon (here: no pid file)
+// through the stop operation, leaving the process alone.
+func TestQuitStopsPlayback(t *testing.T) {
+	var ops []string
+	var mu sync.Mutex
+	sock := fakeCliamp(t, func(req map[string]any) string {
+		mu.Lock()
+		if op, _ := req["operation"].(string); op != "" {
+			ops = append(ops, op)
+		}
+		mu.Unlock()
+		b, _ := json.Marshal(map[string]any{"version": 2, "id": req["id"], "ok": true})
+		return string(b)
+	})
+	if err := stopCliamp(client{sock: sock}); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(ops) != 1 || ops[0] != "stop" {
+		t.Fatalf("operations sent: %v", ops)
 	}
 }

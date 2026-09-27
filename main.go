@@ -19,6 +19,7 @@ func main() {
 	theme := flag.String("theme", fx.OmarchyColors(), "Omarchy colors.toml the visualizers paint with")
 	statePath := flag.String("state", defaultStatePath(), "where the deck keeps its EQ and visualizer between runs")
 	spawn := flag.Bool("spawn", true, "start `cliamp --daemon` when nothing answers on the socket")
+	keep := flag.Bool("keep-playing", false, "leave cliamp playing after the deck quits")
 	flag.Parse()
 
 	c := client{sock: *sock}
@@ -37,5 +38,10 @@ func main() {
 	if _, err := tea.NewProgram(newModel(c, *theme, *statePath)).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "cliamp-deck:", err)
 		os.Exit(1)
+	}
+	if !*keep && c.alive() {
+		if err := stopCliamp(c); err != nil {
+			fmt.Fprintln(os.Stderr, "cliamp-deck: stopping cliamp:", err)
+		}
 	}
 }

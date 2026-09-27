@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,31 +60,59 @@ func runSetup(c client) tea.Cmd {
 	})
 }
 
+// headlessPID is cliamp's process when it runs as a headless daemon. headless
+// is false for a cliamp TUI, which belongs to the user's terminal.
+func headlessPID(c client) (pid int, headless bool, err error) {
+	b, err := os.ReadFile(c.sock + ".pid")
+	if err != nil {
+		return 0, false, err
+	}
+	if pid, err = strconv.Atoi(strings.TrimSpace(string(b))); err != nil {
+		return 0, false, err
+	}
+	cmdline, _ := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/cmdline")
+	return pid, strings.Contains(string(cmdline), "--daemon") || strings.Contains(string(cmdline), "\x00-d"), nil
+}
+
+// stopDaemon asks a headless cliamp to exit and waits for its socket to go quiet.
+func stopDaemon(c client, pid int) error {
+	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+		return err
+	}
+	for range 50 {
+		if !c.alive() {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("cliamp (pid %d) still answering after SIGTERM", pid)
+}
+
 // restartDaemon restarts cliamp so it loads newly configured sources. Only a
 // headless daemon is restarted; a cliamp TUI belongs to the user's terminal.
 func restartDaemon(c client) tea.Cmd {
 	return func() tea.Msg {
-		b, err := os.ReadFile(c.sock + ".pid")
+		pid, headless, err := headlessPID(c)
 		if err != nil {
 			return daemonRestartMsg{err: err}
 		}
-		pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
-		if err != nil {
-			return daemonRestartMsg{err: err}
-		}
-		cmdline, _ := os.ReadFile("/proc/" + strings.TrimSpace(string(b)) + "/cmdline")
-		if !strings.Contains(string(cmdline), "--daemon") && !strings.Contains(string(cmdline), "\x00-d") {
+		if !headless {
 			return daemonRestartMsg{restarted: false}
 		}
-		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+		if err := stopDaemon(c, pid); err != nil {
 			return daemonRestartMsg{err: err}
-		}
-		for range 50 {
-			if !c.alive() {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
 		}
 		return daemonRestartMsg{restarted: true, err: spawnDaemon(c)}
 	}
+}
+
+// stopCliamp ends the music when the deck quits. A headless daemon exits with
+// it (the next launch spawns a fresh one); a cliamp TUI keeps running in its
+// own terminal and only has its playback stopped.
+func stopCliamp(c client) error {
+	if pid, headless, err := headlessPID(c); err == nil && headless {
+		return stopDaemon(c, pid)
+	}
+	_, err := c.op("stop", nil)
+	return err
 }
