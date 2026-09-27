@@ -1,0 +1,417 @@
+name: Arch package repository
+
+# Publishes the `[cliamp-deck]` pacman repository that Arch and Arch-derived
+# (Omarchy) machines install `cliamp-deck` from. The repository IS this repo's
+# `arch-repo` release: its assets are the package(s), the database, and their
+# signatures, and they are replaced in place on every run. That tag is rolling
+# and never moves.
+#
+#   [cliamp-deck]
+#   Server = https://github.com/demian0311/cliamp-deck/releases/download/arch-repo
+#
+# Ported from diagrammo/dgmo's packaging/arch/ + arch-repo.yml (2026-09-27).
+# See packaging/arch/README.md for the full mechanism, secrets, and how to cut
+# a release. Key differences from dgmo's version, which packages an npm CLI:
+#   - this repo ships prebuilt binaries as release assets already (no build
+#     step), so the version-lookup here polls THIS repo's own release for
+#     cliamp-deck-linux-x86_64, cliamp-deck-linux-aarch64 and SHA256SUMS
+#     instead of querying npm
+#   - it builds packages for BOTH x86_64 and aarch64 (dgmo only ever built
+#     x86_64) by overriding CARCH before each makepkg run — there is no
+#     compilation, just `install`, so no cross toolchain is needed
+#   - it also fires on `release: published` (tag vX.Y.Z, stripped of the `v`),
+#     in addition to workflow_dispatch, guarded against retriggering itself
+#     when this workflow's own `arch-repo` release is (re)published
+#
+# 🔴 The `arch-repo` release is created with --prerelease the first time this
+# workflow runs, and MUST STAY that way. install.sh's one-liner and any
+# `releases/latest/download` URL resolve to the most recent NON-prerelease
+# release, so if arch-repo were ever a normal release it could become
+# "Latest" and break that install path. dgmo's copy of this release happens
+# to not be a prerelease and gets away with it only because real version
+# releases keep publishing after it with newer timestamps — that is
+# accidental, not guaranteed, and this workflow does not rely on it.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'cliamp-deck version to package, e.g. 0.2.0 — empty re-indexes what is published'
+        required: false
+        type: string
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    # Excludes the arch-repo release's own `published` event (self-trigger
+    # guard: the "ensure the release exists" step below publishes it the
+    # first time this workflow ever runs) and anything that is not a
+    # released vX.Y.Z tag.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'release' &&
+       github.event.release.tag_name != 'arch-repo' &&
+       github.event.release.prerelease == false &&
+       startsWith(github.event.release.tag_name, 'v'))
+    runs-on: ubuntu-latest
+    # makepkg, repo-add and pacman are Arch's own tools and exist nowhere else.
+    container: archlinux:base-devel
+    permissions:
+      contents: write
+    steps:
+      - name: Install what the base image does not carry
+        run: pacman -Sy --noconfirm --needed git github-cli curl
+
+      - uses: actions/checkout@v6
+
+      - name: Ensure the rolling arch-repo release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view arch-repo --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && exit 0
+          gh release create arch-repo --repo "$GITHUB_REPOSITORY" \
+            --title "Arch package repository (rolling)" \
+            --notes "The [cliamp-deck] pacman repository. Assets are replaced in place on every publish by .github/workflows/arch-repo.yml — this is not a normal release, do not download a specific asset expecting it to stay put. See packaging/arch/README.md." \
+            --prerelease --target master
+
+      - name: Wait for the release's assets, then read its checksums
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+
+          if [ -z "$VERSION" ]; then
+            echo "reindex=true" >> "$GITHUB_OUTPUT"
+            echo "No version given: re-indexing what arch-repo already serves."
+            exit 0
+          fi
+          echo "reindex=false" >> "$GITHUB_OUTPUT"
+
+          TAG="v$VERSION"
+          NEEDED="cliamp-deck-linux-x86_64 cliamp-deck-linux-aarch64 SHA256SUMS"
+          MISSING=""
+          # The release is created by hand today, so give it a few tries
+          # rather than failing on a race with the asset uploads.
+          for i in $(seq 1 30); do
+            NAMES=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null || true)
+            MISSING=""
+            for n in $NEEDED; do
+              printf '%s\n' "$NAMES" | grep -qxF "$n" || MISSING="$MISSING $n"
+            done
+            if [ -z "$MISSING" ]; then
+              echo "all assets present on $TAG"
+              break
+            fi
+            echo "waiting for:$MISSING ($i/30, 20s interval)"
+            sleep 20
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::$TAG is missing:$MISSING after ~10 minutes. Upload the release assets first."
+            exit 1
+          fi
+
+          rm -rf /tmp/rel && mkdir -p /tmp/rel
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'SHA256SUMS' --dir /tmp/rel --clobber
+          SHA_X86_64=$(awk '$2=="cliamp-deck-linux-x86_64"{print $1}' /tmp/rel/SHA256SUMS)
+          SHA_AARCH64=$(awk '$2=="cliamp-deck-linux-aarch64"{print $1}' /tmp/rel/SHA256SUMS)
+          [ -n "$SHA_X86_64" ] || { echo "::error::SHA256SUMS on $TAG has no line for cliamp-deck-linux-x86_64"; exit 1; }
+          [ -n "$SHA_AARCH64" ] || { echo "::error::SHA256SUMS on $TAG has no line for cliamp-deck-linux-aarch64"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha256_x86_64=$SHA_X86_64" >> "$GITHUB_OUTPUT"
+          echo "sha256_aarch64=$SHA_AARCH64" >> "$GITHUB_OUTPUT"
+          echo "$TAG is serving both binaries. x86_64 sha256 $SHA_X86_64, aarch64 sha256 $SHA_AARCH64"
+
+      - name: Point the recipe at that version
+        if: steps.target.outputs.reindex != 'true'
+        run: |
+          cd packaging/arch
+          # pkgrel counts rebuilds OF ONE VERSION, so a new version resets it
+          # to 1 — otherwise a hand bump would ride along on every later
+          # release, claiming a rebuild that never happened.
+          CURRENT=$(awk -F= '/^pkgver=/{print $2}' PKGBUILD)
+          if [ "$CURRENT" != "${{ steps.target.outputs.version }}" ]; then
+            sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          fi
+          sed -i "s/^pkgver=.*/pkgver=${{ steps.target.outputs.version }}/" PKGBUILD
+          sed -i "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('${{ steps.target.outputs.sha256_x86_64 }}')/" PKGBUILD
+          sed -i "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('${{ steps.target.outputs.sha256_aarch64 }}')/" PKGBUILD
+          grep -E '^(pkgver|pkgrel|sha256sums_x86_64|sha256sums_aarch64)=' PKGBUILD
+
+      # 🔴 A published package filename is IMMUTABLE. Republishing different
+      # bytes under the same `name-version-pkgrel-arch.pkg.tar.zst` breaks
+      # every machine that already has the old copy in
+      # /var/cache/pacman/pkg, with "invalid or corrupted package (checksum)".
+      # So: build only what the channel does not already serve, one check per
+      # arch since they publish under different filenames. A recipe change
+      # needs a pkgrel bump — the filename changes with it and no cache can
+      # collide.
+      - name: Which packages are already published?
+        id: published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.target.outputs.reindex }}" = "true" ]; then
+            echo "already_x86_64=true" >> "$GITHUB_OUTPUT"
+            echo "already_aarch64=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          VERSION="${{ steps.target.outputs.version }}"
+          REL=$(awk -F= '/^pkgrel=/{print $2}' packaging/arch/PKGBUILD)
+          EXISTING=$(gh release view arch-repo --repo "$GITHUB_REPOSITORY" \
+            --json assets --jq '.assets[].name' 2>/dev/null || true)
+          for arch in x86_64 aarch64; do
+            NAME="cliamp-deck-${VERSION}-${REL}-${arch}.pkg.tar.zst"
+            echo "filename_${arch}=$NAME" >> "$GITHUB_OUTPUT"
+            if printf '%s\n' "$EXISTING" | grep -qxF "$NAME"; then
+              echo "already_${arch}=true" >> "$GITHUB_OUTPUT"
+              echo "::notice::$NAME is already published — reusing it rather than rebuilding. Bump pkgrel if the recipe changed."
+            else
+              echo "already_${arch}=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
+      - name: Build the packages
+        run: |
+          set -euo pipefail
+          # makepkg refuses to run as root, and a container is root by
+          # default. This runs even when both arches are being reused,
+          # because the bootstrap package below still needs the builder user
+          # and the PACKAGER line.
+          useradd -m builder
+          chown -R builder "$GITHUB_WORKSPACE"
+          # Without this every package we publish is stamped "Unknown
+          # Packager", a poor signal on a repository we ask people to add to
+          # /etc/pacman.conf. `pacman -Qi` shows it.
+          echo 'PACKAGER="Demian Neidetcher <demian0311@gmail.com>"' >> /etc/makepkg.conf
+
+          ALREADY_X86_64="${{ steps.published.outputs.already_x86_64 }}"
+          ALREADY_AARCH64="${{ steps.published.outputs.already_aarch64 }}"
+
+          cd packaging/arch
+          for arch in x86_64 aarch64; do
+            case "$arch" in
+              x86_64)  already="$ALREADY_X86_64" ;;
+              aarch64) already="$ALREADY_AARCH64" ;;
+            esac
+            if [ "$already" = "true" ]; then
+              echo "$arch package is already served; the carry-forward below brings it back unchanged."
+              continue
+            fi
+            # There is no compilation in package() — just `install` of a
+            # downloaded binary — so overriding CARCH on this x86_64 runner is
+            # enough to produce a real aarch64 package, no cross toolchain
+            # needed. makepkg sources /etc/makepkg.conf top to bottom, so the
+            # LAST CARCH= line wins.
+            echo "CARCH=\"$arch\"" >> /etc/makepkg.conf
+            sudo -u builder makepkg --noconfirm --clean
+          done
+          ls -la ./*.pkg.tar.zst
+
+      # The signing key is the owner's, and the repository is consumable
+      # without it — just not verifiable. When ARCH_SIGNING_KEY is absent this
+      # publishes unsigned and says so loudly in the summary, rather than
+      # failing and leaving the channel with nothing at all.
+      - name: Import the signing key, if there is one
+        id: signing
+        env:
+          ARCH_SIGNING_KEY: ${{ secrets.ARCH_SIGNING_KEY }}
+        run: |
+          if [ -z "$ARCH_SIGNING_KEY" ]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::ARCH_SIGNING_KEY is not set — publishing an UNSIGNED repository. Users must set SigLevel = Never, which is exactly the thing that makes a third-party repo untrustworthy. Add the secret to fix this."
+            exit 0
+          fi
+          printf '%s' "$ARCH_SIGNING_KEY" | gpg --batch --import
+          FPR=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr:/{print $10; exit}')
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+          echo "fingerprint=$FPR" >> "$GITHUB_OUTPUT"
+          echo "signing as $FPR"
+          # 🔴 The PUBLIC half ships as an asset, and users import it with
+          # `pacman-key --add`, NOT from a keyserver — Arch's
+          # /etc/pacman.d/gnupg/gpg.conf configures keyserver-options but no
+          # `keyserver` line at all, so `pacman-key --recv-keys <fpr>` has
+          # nowhere to go. Serving the key beside the database keeps the
+          # whole channel on one host and needs no third party.
+          gpg --armor --export "$FPR" > "$GITHUB_WORKSPACE/cliamp-deck.gpg"
+
+      # The bootstrap package DELIVERS that public key, so it can only be
+      # built after the step above has exported it — and not at all when
+      # there is no signing key, since `pacman-key --populate` would then
+      # have nothing to import.
+      #
+      # 🔴 This is also where cliamp-deck-trusted and the .install
+      # placeholder are filled in, from THIS run's $FPR — not from a
+      # committed file. See packaging/arch/keyring/PKGBUILD.
+      - name: Build the bootstrap package
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd packaging/arch/keyring
+          FPR="${{ steps.signing.outputs.fingerprint }}"
+
+          # Same immutability rule as the packages above: never republish
+          # different bytes under a filename the channel already serves.
+          KR_VER=$(awk -F= '/^pkgver=/{print $2}' PKGBUILD)
+          KR_REL=$(awk -F= '/^pkgrel=/{print $2}' PKGBUILD)
+          KR_NAME="cliamp-deck-keyring-${KR_VER}-${KR_REL}-any.pkg.tar.zst"
+          if gh release view arch-repo --repo "$GITHUB_REPOSITORY" \
+               --json assets --jq '.assets[].name' | grep -qxF "$KR_NAME"; then
+            echo "::notice::$KR_NAME is already published — reusing it. Bump pkgrel in packaging/arch/keyring/PKGBUILD if the recipe changed."
+            exit 0
+          fi
+
+          cp "$GITHUB_WORKSPACE/cliamp-deck.gpg" .
+          printf '# Generated by arch-repo.yml from ARCH_SIGNING_KEY — not committed.\n%s:4:\n' "$FPR" > cliamp-deck-trusted
+          sed -i "s/@CLIAMP_DECK_KEY_FINGERPRINT@/$FPR/" cliamp-deck-keyring.install
+
+          bash test-ensure-repo.sh ./ensure-repo.sh
+          chown -R builder .
+          sudo -u builder makepkg --noconfirm --clean
+          # The database is assembled from packaging/arch, so the artifact
+          # has to land there to be picked up.
+          cp ./*.pkg.tar.zst ../
+          ls -la ../*.pkg.tar.zst
+
+      - name: Assemble the repository database
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PASSPHRASE: ${{ secrets.ARCH_SIGNING_KEY_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          mkdir -p repo && cd repo
+          # A no-version re-index can build nothing at all (everything
+          # reused), so an empty glob is normal here, not an error.
+          for pkg in ../packaging/arch/*.pkg.tar.zst; do
+            [ -e "$pkg" ] && cp "$pkg" .
+          done
+          [ -e ../cliamp-deck.gpg ] && cp ../cliamp-deck.gpg . || true
+
+          # Carry forward whatever is already published, so a re-run that
+          # only rebuilds one arch or one package does not drop the others.
+          # Absent on the very first run, hence `|| true`.
+          gh release download arch-repo --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.pkg.tar.zst' --skip-existing || true
+
+          # 🔴 `cliamp-deck-keyring.pkg.tar.zst` is a fixed-name ALIAS of the
+          # versioned bootstrap package, published so the documented join URL
+          # never changes. The carry-forward above brings it back, and left
+          # here `repo-add` would index it as a second copy of the same
+          # package and could point the database at the alias — after which
+          # the drop loop below deletes the versioned file the database no
+          # longer names. It is recreated from this run's package further
+          # down.
+          rm -f cliamp-deck-keyring.pkg.tar.zst cliamp-deck-keyring.pkg.tar.zst.sig
+
+          SIGN_ARGS=()
+          if [ "${{ steps.signing.outputs.signed }}" = "true" ]; then
+            for pkg in ./*.pkg.tar.zst; do
+              gpg --batch --yes --pinentry-mode loopback \
+                ${PASSPHRASE:+--passphrase "$PASSPHRASE"} \
+                --detach-sign --no-armor "$pkg"
+            done
+            # `-s` signs the database itself; `-v` verifies each package's
+            # signature as it is added, so a bad .sig fails here rather than
+            # on somebody's machine.
+            SIGN_ARGS=(-s -v)
+          fi
+
+          # 🔴 `-p`: the carry-forward can hold two versions of one package
+          # (the one just uploaded and the one it supersedes), and without it
+          # the entry is whichever the glob visits LAST — lexical, so 0.10.0
+          # would lose to 0.9.0. With it the newer version wins in any order.
+          repo-add -p "${SIGN_ARGS[@]}" cliamp-deck.db.tar.gz ./*.pkg.tar.zst
+
+          # 🔴 The carry-forward above brings back EVERY version of every
+          # package the release holds, and `repo-add` keeps one entry per
+          # package name — so the version it just superseded is still
+          # sitting here with nothing in the database that can ever point at
+          # it again. Uploaded, it would grow the release by a package per
+          # release forever. Keep exactly what the database lists.
+          KEEP=$(bsdtar -xOf cliamp-deck.db.tar.gz '*/desc' |
+                   awk '/^%FILENAME%$/{getline; print}')
+          for pkg in ./*.pkg.tar.zst; do
+            name=${pkg#./}
+            if ! printf '%s\n' "$KEEP" | grep -qxF "$name"; then
+              echo "dropping superseded package: $name"
+              rm -f "$pkg" "$pkg.sig"
+            fi
+          done
+
+          # 🔴 repo-add leaves `cliamp-deck.db` as a SYMLINK to the tarball,
+          # and a GitHub release asset is a flat file — a symlink uploads as
+          # its own byte-count text of the target path. pacman requests
+          # `<repo>.db`, so both names must be real files with the same
+          # bytes.
+          for base in db files; do
+            rm -f "cliamp-deck.$base"
+            cp "cliamp-deck.$base.tar.gz" "cliamp-deck.$base"
+            if [ -e "cliamp-deck.$base.tar.gz.sig" ]; then
+              rm -f "cliamp-deck.$base.sig"
+              cp "cliamp-deck.$base.tar.gz.sig" "cliamp-deck.$base.sig"
+            fi
+          done
+
+          # The fixed-name alias, made last so the drop loop above cannot eat
+          # it and `repo-add` never saw it. The database points at the
+          # versioned file; this is only here so the README's curl line is
+          # stable.
+          for pkg in ./cliamp-deck-keyring-*.pkg.tar.zst; do
+            [ -e "$pkg" ] || continue
+            cp "$pkg" cliamp-deck-keyring.pkg.tar.zst
+            [ -e "$pkg.sig" ] && cp "$pkg.sig" cliamp-deck-keyring.pkg.tar.zst.sig
+          done
+          ls -la
+
+      - name: Publish it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd repo
+          # 🔴 `--clobber` replaces an asset, it never removes one. A run that
+          # publishes UNSIGNED after a signed one would otherwise leave the
+          # old `.sig` and `cliamp-deck.gpg` assets in place — and under a
+          # `SigLevel = Required` client those stale signatures are worse than
+          # no signatures, because they are checked and fail. Drop anything
+          # this run did not produce.
+          for stale in $(gh release view arch-repo --repo "$GITHUB_REPOSITORY" \
+                           --json assets --jq '.assets[].name'); do
+            [ -e "$stale" ] && continue
+            echo "removing stale asset: $stale"
+            gh release delete-asset arch-repo "$stale" --repo "$GITHUB_REPOSITORY" --yes
+          done
+          gh release upload arch-repo --repo "$GITHUB_REPOSITORY" --clobber ./*
+          {
+            echo "### Arch repository published"
+            echo
+            if [ "${{ steps.target.outputs.reindex }}" = "true" ]; then
+              echo "Re-indexed: \`$(ls *.pkg.tar.zst | grep -v '^cliamp-deck-keyring.pkg' | tr '\n' ' ')\`"
+            else
+              echo "\`cliamp-deck ${{ steps.target.outputs.version }}\` is now served from the \`arch-repo\` release."
+            fi
+            if [ -e cliamp-deck-keyring.pkg.tar.zst ]; then
+              echo
+              echo "Joining the channel is two commands:"
+              echo
+              echo '```bash'
+              echo "curl -LO https://github.com/$GITHUB_REPOSITORY/releases/download/arch-repo/cliamp-deck-keyring.pkg.tar.zst"
+              echo "sudo pacman -U ./cliamp-deck-keyring.pkg.tar.zst"
+              echo '```'
+            fi
+            if [ "${{ steps.signing.outputs.signed }}" = "true" ]; then
+              echo "Signed by \`${{ steps.signing.outputs.fingerprint }}\`."
+            else
+              echo "🔴 **UNSIGNED** — \`ARCH_SIGNING_KEY\` is not set on this repository."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

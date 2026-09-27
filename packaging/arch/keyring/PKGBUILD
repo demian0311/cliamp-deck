@@ -1,0 +1,77 @@
+# Maintainer: Demian Neidetcher
+#
+# Bootstrap package for the [cliamp-deck] pacman channel. Installing it
+# collapses the channel's first joining steps — trust the key, add the
+# repository, keep it through an Omarchy config refresh — into one command:
+#
+#   curl -LO https://github.com/demian0311/cliamp-deck/releases/download/arch-repo/cliamp-deck-keyring.pkg.tar.zst
+#   sudo pacman -U ./cliamp-deck-keyring.pkg.tar.zst
+#   sudo pacman -Sy cliamp-deck
+#
+# 🔴 Cannot become `pacman -U <url>`. Omarchy's stock `SigLevel = Required`
+# applies to a remote package, and this package is unverifiable by
+# construction — the key that would verify it is the one it delivers.
+# `LocalFileSigLevel = Optional` covers a downloaded file instead, hence the
+# curl first.
+#
+# 🔴🔴 NONE of the four `source=()` files below are committed to this repo —
+# this is a deliberate departure from dgmo's packaging/arch/keyring/, which
+# commits a hand-maintained `diagrammo-trusted` fingerprint file.
+# `.github/workflows/arch-repo.yml`, at build time:
+#   - writes `cliamp-deck.gpg`      — the public half exported from the
+#                                     imported ARCH_SIGNING_KEY secret
+#   - writes `cliamp-deck-trusted`  — "<that key's own fingerprint>:4:"
+#   - sed-replaces the `@CLIAMP_DECK_KEY_FINGERPRINT@` placeholder in
+#     `cliamp-deck-keyring.install` (pre_remove's `pacman-key --delete`) with
+#     the same fingerprint
+# So there is no stale-fingerprint failure mode to maintain by hand: the
+# trusted fingerprint can never disagree with the key actually shipped: they
+# are written from the same variable in the same step. See
+# packaging/arch/README.md for the full mechanism and how to build this by
+# hand (which needs a real ARCH_SIGNING_KEY to derive these from).
+
+pkgname=cliamp-deck-keyring
+pkgver=1
+pkgrel=1
+pkgdesc="Trust the cliamp-deck signing key and add the [cliamp-deck] pacman repository"
+arch=('any')
+url="https://github.com/demian0311/cliamp-deck"
+license=('MIT')
+
+# pacman-key does the importing and local signing; the rest is plain bash.
+depends=('pacman')
+
+install="${pkgname}.install"
+
+# All four are local files, generated or placeholder-substituted by CI before
+# makepkg runs (see the header above) — SKIP rather than a pin, since pinning
+# a generated file's checksum would break every build the moment the key
+# rotates, which is the one time this package matters.
+source=('cliamp-deck.gpg'
+        'cliamp-deck-trusted'
+        '10-cliamp-deck-repo.hook'
+        'ensure-repo.sh')
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP')
+
+package() {
+  # The location pacman-key --populate reads, and the same one
+  # archlinux-keyring and omarchy-keyring use.
+  install -Dm644 "${srcdir}/cliamp-deck.gpg" \
+    "${pkgdir}/usr/share/pacman/keyrings/cliamp-deck.gpg"
+  install -Dm644 "${srcdir}/cliamp-deck-trusted" \
+    "${pkgdir}/usr/share/pacman/keyrings/cliamp-deck-trusted"
+
+  # 🔴 The hook is what survives `omarchy-refresh-pacman`, which replaces the
+  # WHOLE of /etc/pacman.conf and then runs `pacman -Syyuu`. Omarchy's own
+  # documented escape hatch — ~/.config/omarchy/hooks/pre-refresh-pacman.d/ —
+  # is closed to a package: `omarchy-hook` reads only $HOME and runs
+  # unprivileged, and there is no system-wide equivalent. A libalpm hook runs
+  # during that same `-Syyuu`, so the stanza is back before anything else runs.
+  install -Dm644 "${srcdir}/10-cliamp-deck-repo.hook" \
+    "${pkgdir}/usr/share/libalpm/hooks/10-cliamp-deck-repo.hook"
+  install -Dm755 "${srcdir}/ensure-repo.sh" \
+    "${pkgdir}/usr/share/${pkgname}/ensure-repo.sh"
+}

@@ -2,3 +2,14 @@
 packaging/aur/src/
 packaging/aur/pkg/
 packaging/aur/*.tar.*
+
+packaging/arch/src/
+packaging/arch/pkg/
+packaging/arch/*.pkg.tar.*
+packaging/arch/cliamp-deck-*-linux-*
+packaging/arch/keyring/src/
+packaging/arch/keyring/pkg/
+packaging/arch/keyring/*.pkg.tar.*
+# CI-generated, never committed — see packaging/arch/keyring/PKGBUILD
+packaging/arch/keyring/cliamp-deck.gpg
+packaging/arch/keyring/cliamp-deck-trusted

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=cliamp deck
+GenericName=Music Player
+Comment=A btop × Winamp terminal face for cliamp, with themed demoscene visualizers
+Exec=cliamp-deck
+Icon=cliamp
+Terminal=true
+Type=Application
+Categories=Audio;Music;Player;AudioVideo;ConsoleOnly;
+Keywords=music;audio;player;terminal;tui;winamp;radio;visualizer;cliamp;
+StartupNotify=false

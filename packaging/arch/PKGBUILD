@@ -1,0 +1,62 @@
+# Maintainer: Demian Neidetcher
+#
+# Repackages the PREBUILT binaries from GitHub Releases — no Go toolchain, no
+# module proxy access, no `go build`. Two consumers:
+#
+#   1. `makepkg -si` from a clone of github.com/demian0311/cliamp-deck, for a
+#      user with nothing hosted by us — arch=(x86_64 aarch64) covers both
+#      prebuilt binaries the release already carries.
+#   2. The [cliamp-deck] pacman repository, published by
+#      .github/workflows/arch-repo.yml — see packaging/arch/README.md for the
+#      full mechanism, secrets, and how to cut a release.
+#
+# packaging/aur/PKGBUILD is a SEPARATE, unrelated recipe (source build via
+# `go build`, aimed at an eventual AUR submission) — do not merge the two or
+# copy changes between them without checking which one you mean.
+
+pkgname=cliamp-deck
+pkgver=0.2.0
+pkgrel=1
+pkgdesc='A btop x Winamp terminal face for cliamp, with themed demoscene visualizers'
+arch=('x86_64' 'aarch64')
+url='https://github.com/demian0311/cliamp-deck'
+license=('MIT')
+depends=('cliamp' 'glibc')
+
+# The binary is prebuilt and already stripped by its own release process;
+# makepkg's strip pass only mangles a Go binary's own symbol table and emits a
+# pointless empty -debug package (gdb-add-index: "No debugging symbols").
+options=('!strip' '!debug')
+
+# The desktop entry mirrors packaging/aur/cliamp-deck.desktop (the AUR needs its
+# own local copy); keep the two in sync by hand. LICENSE comes from the same tag
+# as the binaries rather than a checked-in copy that could drift.
+source=('cliamp-deck.desktop'
+        "LICENSE-${pkgver}::https://raw.githubusercontent.com/demian0311/cliamp-deck/v${pkgver}/LICENSE")
+sha256sums=('SKIP'
+            'SKIP')
+
+# 🔴 Filenames carry the version so the two arches never collide when both
+# arrays are present in the same recipe (makepkg only fetches source_$CARCH
+# for the arch it is actually building).
+source_x86_64=("cliamp-deck-${pkgver}-linux-x86_64::https://github.com/demian0311/cliamp-deck/releases/download/v${pkgver}/cliamp-deck-linux-x86_64")
+source_aarch64=("cliamp-deck-${pkgver}-linux-aarch64::https://github.com/demian0311/cliamp-deck/releases/download/v${pkgver}/cliamp-deck-linux-aarch64")
+
+# From the v0.2.0 release's SHA256SUMS asset, verified 2026-09-27.
+sha256sums_x86_64=('57d96566032b9da8a3efecd59adcf55b3858b3c660a16c3fc65af21317fa1365')
+sha256sums_aarch64=('0013c778e0ba36d3d4750d20c37107a168f123b80bab38df58941e6974af6c87')
+
+package() {
+  local _bin
+  case "$CARCH" in
+    x86_64)  _bin="cliamp-deck-${pkgver}-linux-x86_64" ;;
+    aarch64) _bin="cliamp-deck-${pkgver}-linux-aarch64" ;;
+    *) echo "Unsupported architecture: $CARCH" >&2; exit 1 ;;
+  esac
+
+  install -Dm755 "${srcdir}/${_bin}" "${pkgdir}/usr/bin/${pkgname}"
+  install -Dm644 "${srcdir}/cliamp-deck.desktop" \
+    "${pkgdir}/usr/share/applications/${pkgname}.desktop"
+  install -Dm644 "${srcdir}/LICENSE-${pkgver}" \
+    "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
