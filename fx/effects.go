@@ -62,10 +62,15 @@ func (e *Tunnel) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 }
 
 // Fire: flames as a smooth noise field rising through a flame-shaped mask,
-// so tongues billow and merge instead of flickering pixel by pixel.
-// Height ← bass, flare ← beat, embers ← treble.
+// so tongues billow and merge instead of flickering pixel by pixel. Each
+// column's flame follows one of cliamp's bands, laid low to high across the
+// screen, so the tongues dance to their part of the music; energy speeds the
+// billowing, and a beat flares the whole fire and throws a burst of embers.
 type Fire struct {
-	level  float64 // smoothed flame height
+	cols   []float64 // smoothed flame height per column
+	clock  float64   // flame time: runs faster when the music is busy
+	flare  float64   // brightness kick from the last beat, decaying
+	prev   float64   // last frame's beat, for onsets
 	embers []ember
 }
 
@@ -78,32 +83,56 @@ func (e *Fire) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	if W < 1 || H < 2 {
 		return
 	}
-	target := 0.42 + a.Bass*0.33 + a.Beat*0.18
-	rate := 3.0 // rise faster than it falls, like a flame catching
-	if target < e.level {
-		rate = 1.2
+	if len(e.cols) != W {
+		e.cols = make([]float64, W)
 	}
-	e.level += (target - e.level) * math.Min(1, dt*rate)
-	heatmap := th.Gradient("darker_background", "red", "orange", "yellow", "bright_foreground")
+	e.clock += dt * (0.5 + (a.Bass+a.Mid)*1.1)
+	e.flare *= math.Exp(-dt * 5)
+	beat := onset(a, &e.prev)
+	if beat {
+		e.flare = 1
+	}
+	band := func(x int) float64 { // the column's band, interpolated so neighbours blend
+		n := len(a.Bands)
+		if n < 2 {
+			return a.Bass
+		}
+		pos := float64(x) / float64(max(1, W-1)) * float64(n-1)
+		i := min(int(pos), n-2)
+		return clamp01(a.Bands[i] + (a.Bands[i+1]-a.Bands[i])*(pos-float64(i)))
+	}
 	fh := float64(H)
-	tops := make([]float64, W) // each column's flame height sways, so it forms tongues
-	for x := range tops {
-		tops[x] = e.level * (0.7 + 0.6*fbm(float64(x)/fh*1.4, t*0.35))
+	tops := make([]float64, W)
+	for x := range W {
+		target := 0.22 + band(x)*0.55 + e.flare*0.18
+		rate := 12.0 // leap up on a hit, settle back slowly, like a flame catching
+		if target < e.cols[x] {
+			rate = 2.5
+		}
+		e.cols[x] += (target - e.cols[x]) * math.Min(1, dt*rate)
+		tops[x] = e.cols[x] * (0.8 + 0.4*fbm(float64(x)/fh*1.4, e.clock*0.35))
 	}
+	heatmap := th.Gradient("darker_background", "red", "orange", "yellow", "bright_foreground")
+	c := e.clock
 	for y := range H {
 		v := 1 - float64(y)/fh // 0 at the bottom, 1 at the top
 		for x := range W {
 			u := float64(x) / fh // square units, so blobs keep their shape at any width
 			// Domain-warped noise scrolling upward: q bends the field, n is the flame body.
-			q := fbm(u*2.2, v*1.6-t*0.9)
-			n := fbm(u*3.2+q*1.1, v*2.4-t*1.9)
-			heat := clamp01((1-v/tops[x])*0.95 + (n-0.5)*1.6)
+			q := fbm(u*2.2, v*1.6-c*0.9)
+			n := fbm(u*3.2+q*1.1, v*2.4-c*1.9)
+			heat := clamp01((1-v/tops[x])*0.95 + (n-0.5)*1.6 + e.flare*0.22*(1-v))
 			f.Px[y*W+x] = heatmap.At(math.Pow(heat, 1.3) * 0.9) // white only in the hottest cores
 		}
 	}
-	// Embers: a few sparks that drift up and out on the treble.
-	for range int(a.Treble*a.Treble*8*dt*30 + rand.Float64()*0.5) {
-		e.embers = append(e.embers, ember{rand.Float64() * float64(W), fh * (1 - e.level*0.6), rand.Float64()*6 - 3, -(fh*0.35 + rand.Float64()*fh*0.4), 1})
+	// Embers: a burst on each beat, and a trickle on the treble.
+	spawn := int(a.Treble*a.Treble*8*dt*30 + rand.Float64()*0.5)
+	if beat {
+		spawn += 6 + int(a.Bass*10)
+	}
+	for range spawn {
+		x := rand.Float64() * float64(W)
+		e.embers = append(e.embers, ember{x, fh * (1 - tops[min(W-1, int(x))]*0.7), rand.Float64()*6 - 3, -(fh*0.35 + rand.Float64()*fh*0.4), 1})
 	}
 	spark := th.Color("yellow")
 	live := e.embers[:0]
