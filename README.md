@@ -34,8 +34,8 @@ v or ‹ › cycle visualizers (←/→ when it has focus) · V take over ·
 in sources: ↑/↓ move, → open a source or country, ← back (Radio lists countries; open one for its stations), Enter play, a add to queue, A play next, [ ] tabs (sources/queue/history), / search,
 s set up a source with `cliamp setup` · q quit. Mouse: click and double-click rows, scroll the list, click tabs.
 
-The deck remembers your EQ and visualizer in `~/.config/cliamp-deck/state.toml` (cliamp's daemon does not
-save EQ) and reapplies the EQ when it attaches.
+The deck remembers your EQ, visualizer and last station or track in `~/.config/cliamp-deck/state.toml` (cliamp's
+daemon does not save EQ). When it attaches it reapplies the EQ and, if nothing is playing, starts that station again.
 
 Stage effects live in `fx/` (interface: pixel frame + bass/mid/treble/beat + theme). Each cell is a `▀`
 with 24-bit fg/bg, so the terminal must support truecolor. Colours come from the Omarchy theme at

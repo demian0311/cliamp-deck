@@ -2,11 +2,14 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/bjarneo/cliamp/ipc"
 )
 
 // deckState is what the deck remembers between runs (docs/design/layout.md,
@@ -22,6 +25,11 @@ type deckState struct {
 	// selected row's key.
 	Source, SourceCountry, SourceSelected string
 	SourceInCountry                       bool
+
+	// LastTrack is what was last playing (a radio station's stream, or a
+	// track), so the deck can start it again when it attaches to an idle
+	// cliamp. Stored as JSON, since cliamp's track.play takes the TrackInfo.
+	LastTrack *ipc.TrackInfo
 }
 
 func defaultStatePath() string {
@@ -61,6 +69,11 @@ func loadState(path string) deckState {
 			s.SourceInCountry = v == "true"
 		case "source_selected":
 			s.SourceSelected = unquote(v)
+		case "last_track":
+			var t ipc.TrackInfo
+			if json.Unmarshal([]byte(unquote(v)), &t) == nil && t.Path != "" {
+				s.LastTrack = &t
+			}
 		case "eq_bands":
 			for _, f := range strings.Split(strings.Trim(v, "[]"), ",") {
 				if n, err := strconv.ParseFloat(strings.TrimSpace(f), 64); err == nil {
@@ -80,10 +93,15 @@ func saveState(path string, s deckState) error {
 	for i, b := range s.EQBands {
 		bands[i] = strconv.FormatFloat(b, 'f', -1, 64)
 	}
+	last := ""
+	if s.LastTrack != nil {
+		b, _ := json.Marshal(s.LastTrack)
+		last = string(b)
+	}
 	body := fmt.Sprintf("# cliamp-deck state, rewritten by the deck\nvisualizer = %q\neq_preset = %q\neq_bands = [%s]\n"+
-		"source = %q\nsource_country = %q\nsource_in_country = %t\nsource_selected = %q\n",
+		"source = %q\nsource_country = %q\nsource_in_country = %t\nsource_selected = %q\nlast_track = %q\n",
 		s.Visualizer, s.EQPreset, strings.Join(bands, ", "),
-		s.Source, s.SourceCountry, s.SourceInCountry, s.SourceSelected)
+		s.Source, s.SourceCountry, s.SourceInCountry, s.SourceSelected, last)
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(body), 0o644); err != nil {
 		return err

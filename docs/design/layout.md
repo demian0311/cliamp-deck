@@ -77,6 +77,9 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
 - `~/.config/cliamp-deck/state.toml`: EQ (preset name + 10 bands), last visualizer, and where the sources list was
   left (open provider, radio country, selected row). On attach, reapply the EQ and reopen that provider/country.
   Saved on opening a provider or country, going back, and quitting; not overwritten before the restore lands.
+- Also the last thing playing (`last_track`, cliamp's TrackInfo as JSON, stream title and queue position dropped),
+  saved whenever the playing path changes. On attach, if cliamp is neither playing nor paused, the deck sends
+  `track.play` with it, so the last station starts again (added 2026-09-26).
 - Not remembered: queue/history tab, takeover, EQ panel open.
 
 ## Deferred / upstream candidates

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"slices"
@@ -452,7 +453,11 @@ func (m model) onState(msg stateMsg) (tea.Model, tea.Cmd) {
 		if c := m.reapplyEQ(); c != nil {
 			cmds = append(cmds, c)
 		}
+		if c := m.resume(); c != nil {
+			cmds = append(cmds, c)
+		}
 	}
+	m.rememberTrack()
 	if m.tab == tabQueue && m.snap.PlaylistRevision != m.queueRev {
 		m.queueRev = m.snap.PlaylistRevision
 		cmds = append(cmds, fetchQueue(m.c))
@@ -463,6 +468,33 @@ func (m model) onState(msg stateMsg) (tea.Model, tea.Cmd) {
 		m.lists[tabSources].move(0)
 	}
 	return m, tea.Batch(cmds...)
+}
+
+// resume starts what was last playing when the deck attaches to a cliamp that
+// has nothing on: a freshly spawned daemon, or one left stopped. Anything
+// already playing or paused is left alone.
+func (m *model) resume() tea.Cmd {
+	t := m.saved.LastTrack
+	if t == nil || m.snap.State == "playing" || m.snap.State == "paused" {
+		return nil
+	}
+	label := cmp.Or(t.Station, t.Title, t.Path)
+	m.say("resuming " + label + "…")
+	return m.run("playing "+label, "track.play", map[string]*ipc.TrackInfo{"track": t})
+}
+
+// rememberTrack saves what is playing whenever it changes, for resume. A
+// stream's now-playing title changes every song, so only the path counts.
+func (m *model) rememberTrack() {
+	t := m.snap.Track
+	if m.snap.State != "playing" || t == nil || t.Path == "" ||
+		(m.saved.LastTrack != nil && m.saved.LastTrack.Path == t.Path) {
+		return
+	}
+	keep := *t
+	keep.StreamTitle, keep.Index, keep.QueuePosition = "", 0, 0 // stale by next run
+	m.saved.LastTrack = &keep
+	m.persist()
 }
 
 // reapplyEQ restores the EQ the deck saved, since cliamp's daemon forgets it.

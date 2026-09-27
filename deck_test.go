@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -222,6 +223,37 @@ func TestStateRoundTrip(t *testing.T) {
 	}
 	if got := loadState(filepath.Join(t.TempDir(), "missing")); got.Visualizer != "" {
 		t.Errorf("missing file: %+v", got)
+	}
+	want.LastTrack = &ipc.TrackInfo{Path: "http://example.com/a \"b\"", Station: "Hit FM", Stream: true}
+	if err := saveState(p, want); err != nil {
+		t.Fatal(err)
+	}
+	if got := loadState(p).LastTrack; got == nil || !reflect.DeepEqual(got, want.LastTrack) {
+		t.Errorf("last track: %+v", got)
+	}
+}
+
+// What was last playing is remembered, and started again only when the deck
+// attaches to a cliamp with nothing on.
+func TestResumeLastTrack(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.toml")
+	m := newModel(client{sock: "/nonexistent"}, "/nonexistent/colors.toml", path)
+	station := &ipc.TrackInfo{Path: "http://radio.example/hit", Station: "Hit FM", Stream: true, StreamTitle: "Some Song", QueuePosition: 3}
+	m = upd(m, stateMsg{snap: &ipc.RuntimeSnapshot{State: "playing", Track: station}})
+	got := loadState(path).LastTrack
+	if got == nil || got.Path != station.Path || got.StreamTitle != "" || got.QueuePosition != 0 {
+		t.Fatalf("remembered %+v", got)
+	}
+
+	for _, c := range []struct {
+		state string
+		want  bool
+	}{{"stopped", true}, {"", true}, {"playing", false}, {"paused", false}} {
+		m := newModel(client{sock: "/nonexistent"}, "/nonexistent/colors.toml", path)
+		m.snap = &ipc.RuntimeSnapshot{State: c.state}
+		if got := m.resume() != nil; got != c.want {
+			t.Errorf("cliamp %q: resume %t, want %t", c.state, got, c.want)
+		}
 	}
 }
 
