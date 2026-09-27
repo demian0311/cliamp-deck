@@ -19,11 +19,13 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
   and reverts when focus leaves. Sources minimum 8 rows (5 when rows < 30).
 
 ## Visualizer
-- One cycle, `fx.Stock()` in order: plasma → terrain → fire → metaballs → ridges → spectrum → timescope → vortex →
+- One cycle, `fx.Stock()` in order: plasma → fire → metaballs → ridges → spectrum → timescope → vortex →
   water → synaesthesia → scope → fountain → aurora → skyline → coral → flow → life → moire → braille. Saved names no
   longer in the cycle fall back to the first.
-  2026-09-27: tunnel removed. Terrain (voxel flyover, `fx/scenes.go`) took its slot; aurora (curtains over three
-  parallax ranges) and skyline (flyover of a city whose windows follow random bands) share its voxel column march.
+  2026-09-27: tunnel removed. Aurora (curtains over three low parallax ranges) and skyline (a slow voxel flyover
+  of a city whose windows follow random bands, drawn at 2× and averaged down to soften the column-march stair
+  steps) are in `fx/scenes.go`. Terrain (a voxel mountain flyover) was added and removed the same day: it did not
+  read.
   Coral (Gray–Scott), flow (particle field), life (Conway) and moire (two ring sets in theme hues) are in
   `fx/growth.go`. Picked from a browser mockup; radar was dropped there.
   Braille (a full pane of braille whose dot density follows the bands, theme hues drifting through it) is a

@@ -217,7 +217,7 @@ func TestUnconfiguredSourcesSitAtTheBottom(t *testing.T) {
 
 func TestStateRoundTrip(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "d", "state.toml")
-	want := deckState{Visualizer: "terrain", EQPreset: "Custom", EQBands: []float64{1, -2.5, 0, 0, 3, 0, 0, 0, 0, 12}}
+	want := deckState{Visualizer: "aurora", EQPreset: "Custom", EQBands: []float64{1, -2.5, 0, 0, 3, 0, 0, 0, 0, 12}}
 	if err := saveState(p, want); err != nil {
 		t.Fatal(err)
 	}

@@ -275,40 +275,24 @@ func (e *Moire) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 // part of the spectrum is, bass on the left, so the page thickens and thins
 // with the music; each dot has a fixed threshold, so a rising level fills
 // cells dot by dot instead of flickering. Loudness brightens the colours,
-// bass hurries the currents, and a beat sends a filled ring out from the
-// centre.
+// bass hurries the currents, and a beat flashes the page and nudges the hues
+// along.
 type Braille struct {
 	hue, drift float64
-	waves      []float64 // ring radii in dots, one per recent beat
-	prev       float64
 	cells      Cells // Render's pixel fallback draws through this
 }
 
 func (*Braille) Name() string { return "braille" }
 
-const (
-	brailleFloor = 0.18 // share of dots lit in silence, so the page never empties
-	brailleRing  = 3.0  // half-width of a beat ring, in dots
-)
+const brailleFloor = 0.45 // share of dots lit in silence, so the page never thins to patches
 
 func (e *Braille) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
-	W, H := float64(c.W*2), float64(c.H*4) // dot resolution
-	if W == 0 || H == 0 {
+	W := float64(c.W * 2) // dot columns
+	if c.W == 0 || c.H == 0 {
 		return
 	}
 	e.hue += dt/metaballLap + a.Beat*dt*0.2
 	e.drift += dt * (0.15 + 0.5*a.Bass)
-	if onset(a, &e.prev) {
-		e.waves = append(e.waves, 0)
-	}
-	reach := math.Hypot(W, H) / 2
-	live := e.waves[:0]
-	for _, r := range e.waves {
-		if r += dt * reach * 1.2; r < reach+brailleRing {
-			live = append(live, r)
-		}
-	}
-	e.waves = live
 
 	hues := th.Gradient(append(metaballHues, metaballHues[0])...)
 	lum := 0.35 + 0.65*(a.Bass+a.Mid+a.Treble)/3
@@ -320,11 +304,7 @@ func (e *Braille) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 			for r := range 4 {
 				for s := range 2 {
 					x, y := float64(cx*2+s), float64(cy*4+r)
-					v := math.Sqrt(bandAt(a, x/W)) * (0.3 + 1.1*fbm(x*0.04-e.drift, y*0.05+e.drift*0.5))
-					d := math.Hypot(x-W/2, y-H/2)
-					for _, wr := range e.waves {
-						v += 0.7 * clamp01(1-math.Abs(d-wr)/brailleRing) * (1 - wr/reach)
-					}
+					v := math.Sqrt(bandAt(a, x/W)) * (0.8 + 0.4*fbm(x*0.04-e.drift, y*0.05+e.drift*0.5))
 					v = brailleFloor + (1-brailleFloor)*clamp01(v)
 					if hash2(int64(x), int64(y)) < v {
 						ch |= bits[r][s]
@@ -339,8 +319,8 @@ func (e *Braille) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 			}
 			fx, fy := float64(cx), float64(cy)
 			p := e.hue + 2.2*fbm(fx*0.03+e.drift*0.7, fy*0.07-e.drift*0.4) // several hues at once, in drifting bands
-			col := lerp(th.Stage, hues.At(frac(p)), 0.55+0.45*clamp01(level*lum*1.6))
-			c.Ch[i], c.Fg[i] = 0x2800+ch, th.Glow(col, a.Beat*0.25)
+			col := lerp(th.Stage, hues.At(frac(p)), 0.75+0.25*clamp01(level*lum*1.6))
+			c.Ch[i], c.Fg[i] = 0x2800+ch, th.Glow(col, a.Beat*0.3)
 		}
 	}
 }

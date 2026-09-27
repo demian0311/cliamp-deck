@@ -80,7 +80,7 @@ type Effect interface {
 
 // Stock is the built-in set, in `v` cycle order.
 func Stock() []Effect {
-	return []Effect{&Plasma{}, &Terrain{}, &Fire{}, &Metaballs{}, &Ridges{}, &Spectrum{}, &Timescope{}, &Vortex{}, &Water{}, &Synaesthesia{}, &Scope{}, &Fountain{},
+	return []Effect{&Plasma{}, &Fire{}, &Metaballs{}, &Ridges{}, &Spectrum{}, &Timescope{}, &Vortex{}, &Water{}, &Synaesthesia{}, &Scope{}, &Fountain{},
 		&Aurora{}, &Skyline{}, &Coral{}, &Flow{}, &Life{}, &Moire{}, &Braille{}}
 }
 
