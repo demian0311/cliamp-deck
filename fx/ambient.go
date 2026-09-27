@@ -299,10 +299,17 @@ func (e *Warp) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	}
 }
 
-// Scope: a phosphor oscilloscope tracing Lissajous figures with afterglow.
+// Scope: a phosphor oscilloscope tracing Lissajous figures with afterglow,
+// its colour drifting through the theme's hues.
 // cliamp sends bands, not the waveform, so the figure is built from them:
 // bass sets its size, mids its knot ratio, treble makes it fizz.
-type Scope struct{ acc []float64 }
+type Scope struct {
+	acc []float64
+	hue float64 // position round the hues, in laps
+}
+
+// scopeLap is how many seconds the trace takes to go round the hues once.
+const scopeLap = 30.0
 
 func (*Scope) Name() string { return "scope" }
 
@@ -329,20 +336,16 @@ func (e *Scope) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 			e.acc[iy*f.W+ix] = math.Min(1.6, e.acc[iy*f.W+ix]+0.35)
 		}
 	}
-	deep, green := th.Color("darker_background"), th.Color("green")
+	// The trace drifts round the theme's hues (the metaballs' palette), one lap
+	// per scopeLap seconds, and a beat nudges it along.
+	e.hue += dt/scopeLap + a.Beat*dt*0.3
+	hues := th.Gradient(append(metaballHues, metaballHues[0])...)
+	deep, ink := th.Color("darker_background"), hues.At(frac(e.hue))
 	for i, v := range e.acc {
 		if v < 1 {
-			f.Px[i] = lerp(deep, green, v)
+			f.Px[i] = lerp(deep, ink, v)
 		} else {
-			f.Px[i] = lerp(green, th.Bright, (v-1)/0.6)
-		}
-	}
-	gx, gy := max(2, f.W/8), max(2, f.H/4) // graticule
-	for y := range f.H {
-		for x := range f.W {
-			if (x%gx == 0 && y%2 == 0) || (y%gy == 0 && x%2 == 0) {
-				blend(f, x, y, green, 0.07)
-			}
+			f.Px[i] = lerp(ink, th.Bright, (v-1)/0.6)
 		}
 	}
 }
