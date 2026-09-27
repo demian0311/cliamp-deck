@@ -84,7 +84,12 @@ func (e *Vortex) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 
 	e.hue += dt/scopeLap + a.Beat*dt*0.3
 	hues := th.Gradient(append(metaballHues, metaballHues[0])...)
-	deep := th.Color("darker_background")
+	// Light adds to a dark stage; on a light theme the trails are ink taken
+	// away from the page instead, so sign flips which way from Stage they go.
+	deep, sign := th.Stage, 1.0
+	if th.Light {
+		sign = -1
+	}
 	R := math.Min(W, H)
 	stamp := func(x, y float64, c RGB, k float64) {
 		ix, iy := int(math.Round(x)), int(math.Round(y))
@@ -93,9 +98,9 @@ func (e *Vortex) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 		}
 		o := 3 * (iy*f.W + ix)
 		// max, not sum: overlapping light would add up to white and lose the hue
-		e.buf[o] = math.Max(e.buf[o], (float64(c.R)-float64(deep.R))*k)
-		e.buf[o+1] = math.Max(e.buf[o+1], (float64(c.G)-float64(deep.G))*k)
-		e.buf[o+2] = math.Max(e.buf[o+2], (float64(c.B)-float64(deep.B))*k)
+		e.buf[o] = math.Max(e.buf[o], sign*(float64(c.R)-float64(deep.R))*k)
+		e.buf[o+1] = math.Max(e.buf[o+1], sign*(float64(c.G)-float64(deep.G))*k)
+		e.buf[o+2] = math.Max(e.buf[o+2], sign*(float64(c.B)-float64(deep.B))*k)
 	}
 	points := 500 * max(f.W, f.H) / 96
 	for s := range points {
@@ -110,7 +115,7 @@ func (e *Vortex) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	}
 	for i := range f.Px {
 		o := 3 * i
-		f.Px[i] = RGB{u8(float64(deep.R) + e.buf[o]), u8(float64(deep.G) + e.buf[o+1]), u8(float64(deep.B) + e.buf[o+2])}
+		f.Px[i] = RGB{u8(float64(deep.R) + sign*e.buf[o]), u8(float64(deep.G) + sign*e.buf[o+1]), u8(float64(deep.B) + sign*e.buf[o+2])}
 	}
 }
 
@@ -173,8 +178,11 @@ func (e *Water) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 		}
 		e.cur, e.old = e.old, e.cur
 	}
-	deep, blue, cyan := th.Color("darker_background"), th.Color("blue"), th.Color("cyan")
+	deep, blue, cyan := th.Stage, th.Color("blue"), th.Color("cyan")
 	rest := lerp(deep, blue, 0.2)
+	if th.Light {
+		rest = lerp(deep, blue, 0.35) // a tint on paper needs more pigment than a glow in the dark
+	}
 	light := 0.5 + 0.3*a.Bass + 0.2*a.Beat // the pool brightens with the bass and flashes on the beat
 	for y := range h {
 		for x := range w {
@@ -187,7 +195,7 @@ func (e *Water) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 			c := rest
 			switch {
 			case s > 0.5:
-				c = lerp(cyan, th.Bright, clamp01(s-0.5))
+				c = th.Glow(cyan, clamp01(s-0.5))
 			case s > 0:
 				c = lerp(rest, cyan, s*2)
 			default:
@@ -215,7 +223,7 @@ type spray struct {
 func (*Fountain) Name() string { return "fountain" }
 
 func (e *Fountain) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
-	deep := th.Color("darker_background")
+	deep := th.Stage
 	for i := range f.Px { // trails
 		f.Px[i] = lerp(f.Px[i], deep, 0.4)
 	}
@@ -240,7 +248,7 @@ func (e *Fountain) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 		}
 		if beat {
 			for range 8 {
-				launch(1.15, lerp(c, th.Bright, 0.6))
+				launch(1.15, th.Glow(c, 0.6))
 			}
 		}
 	}
@@ -342,7 +350,7 @@ func (e *Spectrum) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 func (e *Spectrum) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	e.cells.Resize(f.W, f.H/2)
 	e.RenderCells(&e.cells, a, t, dt, th)
-	cellsToPixels(f, &e.cells, th.Color("darker_background"))
+	cellsToPixels(f, &e.cells, th.Stage)
 }
 
 // Timescope, after AVS: a spectrogram scrolling left, bass at the bottom and
@@ -357,7 +365,7 @@ const timescopeSpan = 4.0
 func (*Timescope) Name() string { return "timescope" }
 
 func (e *Timescope) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
-	heat := th.Gradient("darker_background", "blue", "magenta", "orange", "yellow", "bright_foreground")
+	heat := th.Heat("blue", "magenta", "orange", "yellow")
 	e.acc += dt * float64(f.W) / timescopeSpan
 	for ; e.acc >= 1; e.acc-- {
 		for y := range f.H {
@@ -391,7 +399,7 @@ const (
 
 func (e *Synaesthesia) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	w, h := f.W, f.H
-	deep := th.Color("darker_background")
+	deep := th.Stage
 	if len(e.buf) != 3*w*h {
 		e.buf, e.tmp = make([]float64, 3*w*h), make([]float64, 3*w*h)
 		for i := range w * h {
@@ -422,7 +430,7 @@ func (e *Synaesthesia) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 		for x := range w {
 			u := float64(x) / float64(w-1)
 			v := bandAt(a, u)
-			c := lerp(hues.At(u), th.Bright, v*v*v)                                         // loud bands burn white at the core
+			c := th.Glow(hues.At(u), v*v*v)                                                 // loud bands burn at the core
 			v *= v * (0.5 + 0.5*math.Sin(float64(x)*2.1+math.Sin(float64(x)*0.37+t*0.4)*3)) // quiet bands stay dark; filaments keep it crisp
 			for _, y := range []int{mid - 1, mid} {
 				o := 3 * (y*w + x)

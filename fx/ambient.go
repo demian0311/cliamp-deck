@@ -154,7 +154,7 @@ func (e *Ridges) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 			depth := (float64(front) + phase) / ridgeCount
 			col := heat.At(clamp01(e.lines[front][cx*2] / 1.1))
 			if front == 0 {
-				col = lerp(col, th.Bright, 0.2)
+				col = th.Glow(col, 0.2)
 			}
 			col = lerp(th.Background, col, edge*(1-clamp01(depth*0.75)))
 			c.Ch[i], c.Fg[i] = 0x2800+ch, col
@@ -213,12 +213,12 @@ func (e *Scope) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	// per scopeLap seconds, and a beat nudges it along.
 	e.hue += dt/scopeLap + a.Beat*dt*0.3
 	hues := th.Gradient(append(metaballHues, metaballHues[0])...)
-	deep, ink := th.Color("darker_background"), hues.At(frac(e.hue))
+	deep, ink := th.Stage, hues.At(frac(e.hue))
 	for i, v := range e.acc {
 		if v < 1 {
 			f.Px[i] = lerp(deep, ink, v)
 		} else {
-			f.Px[i] = lerp(ink, th.Bright, (v-1)/0.6)
+			f.Px[i] = th.Glow(ink, (v-1)/0.6)
 		}
 	}
 }

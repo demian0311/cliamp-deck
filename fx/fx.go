@@ -30,6 +30,12 @@
 // Rules of thumb:
 //   - Take every colour from th (Color, Gradient, Background, Bright); never a
 //     literal, or the effect ignores the user's theme.
+//   - Themes can be light. For empty space use th.Stage, not
+//     darker_background; for "brighter" use th.Glow or th.Heat, not a lerp
+//     toward Bright, which is near-black text on a light theme. Effects that
+//     add light (trails, afterglow) subtract it on paper; see Vortex.
+//     TestEffectsReadOnLightAndDarkThemes fails an effect that vanishes or
+//     turns to soot there.
 //   - Advance motion by dt, not per call: frames arrive at ~30 fps but not
 //     evenly. Keep that state on the effect's own struct.
 //   - Audio levels are already normalised to the recent range of the music,

@@ -25,7 +25,7 @@ func (e *Plasma) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 				math.Sin((cx*k+cy*k+sp)*0.6) + math.Sin(math.Hypot(cx, cy)*k*0.9-sp*1.4)
 			c := wheel.At(frac(v/8 + sp*0.05 + a.Bass*0.3))
 			c = lerp(th.Background, c, 0.55+math.Max(0, v)*0.1)
-			f.Px[y*f.W+x] = lerp(c, th.Bright, a.Beat*0.35)
+			f.Px[y*f.W+x] = th.Glow(c, a.Beat*0.35)
 		}
 	}
 }
@@ -37,7 +37,7 @@ type Tunnel struct{ z float64 }
 func (*Tunnel) Name() string { return "tunnel" }
 
 func (e *Tunnel) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
-	grad := th.Gradient("darker_background", "blue", "accent", "cyan", "bright_foreground")
+	grad := th.Heat("blue", "accent", "cyan")
 	e.z += dt * (0.6 + a.Bass*2.7)
 	twist := math.Sin(t*0.3) * 0.6 * a.Mid
 	for y := range f.H {
@@ -54,7 +54,7 @@ func (e *Tunnel) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 				c = lerp(th.Background, c, 0.35)
 			}
 			if ring%4 == 0 {
-				c = lerp(c, th.Bright, a.Beat*0.6)
+				c = th.Glow(c, a.Beat*0.6)
 			}
 			f.Px[y*f.W+x] = lerp(th.Background, c, math.Min(1, d*1.4)) // fade the vanishing point
 		}
@@ -112,7 +112,7 @@ func (e *Fire) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 		e.cols[x] += (target - e.cols[x]) * math.Min(1, dt*rate)
 		tops[x] = e.cols[x] * (0.8 + 0.4*fbm(float64(x)/fh*1.4, e.clock*0.35))
 	}
-	heatmap := th.Gradient("darker_background", "red", "orange", "yellow", "bright_foreground")
+	heatmap := th.Heat("red", "orange", "yellow")
 	c := e.clock
 	for y := range H {
 		v := 1 - float64(y)/fh // 0 at the bottom, 1 at the top
@@ -144,7 +144,7 @@ func (e *Fire) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 			continue
 		}
 		if ix, iy := int(m.x), int(m.y); ix >= 0 && ix < W && iy >= 0 && iy < H {
-			f.Px[iy*W+ix] = lerp(f.Px[iy*W+ix], lerp(spark, th.Bright, m.life*0.5), m.life)
+			f.Px[iy*W+ix] = lerp(f.Px[iy*W+ix], th.Glow(spark, m.life*0.5), m.life)
 		}
 		live = append(live, m)
 	}
@@ -227,7 +227,7 @@ func (*Metaballs) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 			// edge is a fade rather than a rim; cores then warm toward white.
 			body := smoothstep(0.06, 1.5, field)
 			c := lerp(th.Background, mix, body)
-			f.Px[y*f.W+x] = lerp(c, th.Bright, math.Min(0.45, math.Max(0, field-1.5)*0.08+a.Beat*0.2*body))
+			f.Px[y*f.W+x] = th.Glow(c, math.Min(0.45, math.Max(0, field-1.5)*0.08+a.Beat*0.2*body))
 		}
 	}
 }

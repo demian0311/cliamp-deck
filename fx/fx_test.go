@@ -184,3 +184,61 @@ func pearson(a, b []float64) float64 {
 	}
 	return ab / math.Sqrt(aa*bb+1e-12)
 }
+
+// Every effect must stay legible on a light theme, where bright_foreground is
+// near-black and darker_background a grey band. Before Theme.Stage and
+// Theme.Glow, vortex drew nothing at all on paper, and fire, metaballs and
+// synaesthesia burned toward the text colour and read as soot. Lit is the
+// share of pixels that stand off the page (contrast > 1.5); soot is the share
+// within 1.5 of the text colour. testdata/light-colors.toml is Omarchy's
+// catppuccin-latte; the missing file gives the dark fallback.
+func TestEffectsReadOnLightAndDarkThemes(t *testing.T) {
+	caps := loadCapture(t, "thunderstruck-20s.ndjson")
+	for _, path := range []string{"testdata/light-colors.toml", "/nonexistent"} {
+		th, _ := LoadTheme(path)
+		if th.Light != (path != "/nonexistent") {
+			t.Fatalf("%s: Light = %v", path, th.Light)
+		}
+		ink := th.Color("foreground")
+		for _, e := range Stock() {
+			an, f := &Analyzer{}, &Frame{}
+			f.Resize(80, 44)
+			var lit, soot, n float64
+			for i, b := range caps[:300] {
+				e.Render(f, an.Update(b, 1.0/30), float64(i)/30, 1.0/30, th)
+				if i < 60 {
+					continue
+				}
+				for _, p := range f.Px {
+					n++
+					if contrast(p, th.Background) > 1.5 {
+						lit++
+					}
+					if contrast(p, ink) < 1.5 && chroma(p) < 40 {
+						soot++
+					}
+				}
+			}
+			t.Logf("%-8s %-12s lit %3.0f%%  soot %4.1f%%", th.Name, e.Name(), lit/n*100, soot/n*100)
+			if lit/n < 0.15 {
+				t.Errorf("%s on %s: %.0f%% of pixels stand off the background, want ≥ 15%%", e.Name(), th.Name, lit/n*100)
+			}
+			// Soot only means something on paper: white-hot is the point on a dark
+			// stage. Spectrum's peak caps are the text colour by design.
+			if th.Light && e.Name() != "spectrum" && soot/n > 0.02 {
+				t.Errorf("%s on %s: %.1f%% of pixels are near the text colour, want ≤ 2%%", e.Name(), th.Name, soot/n*100)
+			}
+		}
+	}
+}
+
+// chroma is how far a colour is from grey, 0..255.
+func chroma(c RGB) int {
+	return int(max(c.R, c.G, c.B)) - int(min(c.R, c.G, c.B))
+}
+
+// contrast is the WCAG contrast ratio of two colours, 1..21.
+func contrast(a, b RGB) float64 {
+	la, lb := luminance(a), luminance(b)
+	return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+}

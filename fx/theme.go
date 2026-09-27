@@ -2,6 +2,7 @@ package fx
 
 import (
 	"bufio"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -25,6 +26,53 @@ type Theme struct {
 	Colors map[string]RGB
 
 	Background, Bright RGB // background and bright_foreground, used by most effects
+
+	// Light is true when the background is brighter than the text. Effects
+	// that model light on a dark stage invert on paper: bright_foreground is
+	// then near-black and darker_background a grey band, so both go through
+	// Stage and Glow rather than by name.
+	Light bool
+	// Stage is the colour an effect's empty space takes: darker_background
+	// on a dark theme, the page itself on a light one.
+	Stage RGB
+}
+
+// Glow pushes c toward full intensity by k (0..1): toward white-hot on a dark
+// theme, and toward a deeper ink of the same hue on a light one, where
+// burning toward the text colour would read as soot.
+func (th *Theme) Glow(c RGB, k float64) RGB {
+	if th.Light {
+		return lerp(c, RGB{c.R * 3 / 5, c.G * 3 / 5, c.B * 3 / 5}, k)
+	}
+	return lerp(c, th.Bright, k)
+}
+
+// Heat builds a gradient that rises from Stage through the named colours to
+// Glow at full intensity. The names run from coolest to hottest as a dark
+// theme shows them; a light theme runs them the other way, so the faintest
+// heat is the colour nearest the page and the hottest the deepest ink.
+func (th *Theme) Heat(names ...string) Gradient {
+	g := Gradient{Stops: []RGB{th.Stage}}
+	for i := range names {
+		n := names[i]
+		if th.Light {
+			n = names[len(names)-1-i]
+		}
+		g.Stops = append(g.Stops, th.Color(n))
+	}
+	return Gradient{Stops: append(g.Stops, th.Glow(g.Stops[len(g.Stops)-1], 1))}
+}
+
+// luminance is relative luminance (WCAG), 0..1.
+func luminance(c RGB) float64 {
+	ch := func(v uint8) float64 {
+		x := float64(v) / 255
+		if x <= 0.03928 {
+			return x / 12.92
+		}
+		return math.Pow((x+0.055)/1.055, 2.4)
+	}
+	return 0.2126*ch(c.R) + 0.7152*ch(c.G) + 0.0722*ch(c.B)
 }
 
 // Color returns a named theme colour, or the background for an unknown name.
@@ -85,6 +133,11 @@ func LoadTheme(path string) (*Theme, error) {
 	}
 	th := &Theme{Name: name, Colors: colors}
 	th.Background, th.Bright = th.Color("background"), th.Color("bright_foreground")
+	th.Light = luminance(th.Background) > luminance(th.Color("foreground"))
+	th.Stage = th.Color("darker_background")
+	if th.Light {
+		th.Stage = th.Background
+	}
 	return th, err
 }
 
