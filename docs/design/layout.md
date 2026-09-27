@@ -18,12 +18,15 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
   and reverts when focus leaves. Sources minimum 8 rows (5 when rows < 30).
 
 ## Visualizer
-- One cycle, `fx.Stock()` in order: plasma → tunnel → fire → metaballs → ridges → vortex → water → warp → scope →
-  fountain. The braille spectrum was removed 2026-09-26; a saved `visualizer = "spectrum"` falls back to the first.
-  Aurora, ripples and rain were replaced 2026-09-26 by vortex (Geiss/MilkDrop feedback), water (AVS Water Bump) and
-  fountain (AVS Dot Fountain) because they did not visibly follow the music; saved names fall back to the first.
+- One cycle, `fx.Stock()` in order: plasma → tunnel → fire → metaballs → ridges → spectrum → timescope → vortex →
+  water → synaesthesia → scope → fountain. Saved names no longer in the cycle fall back to the first.
+  2026-09-26: the braille spectrum was removed, then aurora, ripples, rain and warp were replaced by Winamp-era
+  effects — vortex (Geiss/MilkDrop feedback), water (AVS Water Bump), fountain (AVS Dot Fountain), spectrum
+  (Winamp 2 bars with peak caps; a saved `visualizer = "spectrum"` now lands on it), timescope (AVS spectrogram)
+  and synaesthesia (the XMMS plugin) — because they did not visibly follow the music. Candidates were picked from a
+  browser mockup replaying the recorded captures.
   `TestEffectsFollowTheMusic` replays the recorded radio and fails any effect whose picture stops tracking the beat
-  or loudness (ridges, scope and tunnel exempt: they answer through shape).
+  or loudness (ridges, scope, tunnel and timescope exempt: they answer through shape or history).
   Ridges is an `fx.GlyphEffect`: the deck calls `RenderCells` and draws coloured braille dots instead of blitting
   pixels.
 - Cycle: `v` anywhere; `←/→` when the visualizer has focus or has taken over; clickable `‹ n/N ›` on its frame.

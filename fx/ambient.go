@@ -172,56 +172,6 @@ func (e *Ridges) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 
 func u8(v float64) uint8 { return uint8(math.Max(0, math.Min(255, v))) }
 
-// Warp: a starfield in theme colours, flown through. Bass sets the speed and
-// each beat lurches the field forward into streaks.
-type Warp struct{ stars []star }
-
-type star struct {
-	x, y, z float64
-	c       RGB
-}
-
-func (*Warp) Name() string { return "warp" }
-
-func (e *Warp) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
-	hues := []RGB{th.Color("cyan"), th.Color("blue"), th.Color("magenta"), th.Color("red"), th.Color("orange"),
-		th.Color("yellow"), th.Color("green"), th.Bright, th.Bright, th.Bright}
-	spawn := func(z float64) star {
-		return star{rand.Float64()*2 - 1, rand.Float64()*2 - 1, z, hues[rand.IntN(len(hues))]}
-	}
-	if len(e.stars) == 0 {
-		for range 170 {
-			e.stars = append(e.stars, spawn(rand.Float64()))
-		}
-	}
-	deep := th.Color("darker_background")
-	for i := range f.Px { // trails: last frame fades toward the void
-		f.Px[i] = lerp(f.Px[i], deep, 0.45)
-	}
-	W, H := float64(f.W), float64(f.H)
-	proj := func(s star) (float64, float64) { return W/2 + s.x/s.z*W*0.35, H/2 + s.y/s.z*H*0.35 }
-	speed := 0.12 + a.Bass*0.9 + a.Beat*1.4
-	for i := range e.stars {
-		s := &e.stars[i]
-		px, py := proj(*s)
-		s.z -= speed * dt
-		if s.z <= 0.03 {
-			*s = spawn(1)
-			continue
-		}
-		nx, ny := proj(*s)
-		if nx < 0 || nx >= W || ny < 0 || ny >= H {
-			*s = spawn(1)
-			continue
-		}
-		n := max(1, int(math.Ceil(math.Hypot(nx-px, ny-py))))
-		for k := 0; k <= n; k++ {
-			u := float64(k) / float64(n)
-			blend(f, int(math.Round(px+(nx-px)*u)), int(math.Round(py+(ny-py)*u)), s.c, clamp01(1.15-s.z)*(0.4+0.6*u))
-		}
-	}
-}
-
 // Scope: a phosphor oscilloscope tracing Lissajous figures with afterglow,
 // its colour drifting through the theme's hues.
 // cliamp sends bands, not the waveform, so the figure is built from them:

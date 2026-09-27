@@ -111,7 +111,7 @@ func pct(v []float64, p float64) float64 {
 // Each effect paints every pixel from the theme and is not a flat fill.
 func TestStockEffectsPaintTheWholeFrame(t *testing.T) {
 	th, _ := LoadTheme("/nonexistent")
-	a := Audio{Bass: .7, Mid: .5, Treble: .4, Beat: .8}
+	a := Audio{Bass: .7, Mid: .5, Treble: .4, Beat: .8, Bands: []float64{.9, .8, .7, .6, .5, .5, .4, .3, .3, .2}}
 	for _, e := range Stock() {
 		f := &Frame{}
 		f.Resize(60, 40)
@@ -131,11 +131,12 @@ func TestStockEffectsPaintTheWholeFrame(t *testing.T) {
 // Replays the recorded radio through each effect and checks the picture
 // follows the music: how much it changes, or how bright it is, must track the
 // beat or the loudness. Aurora and ripples scored r ≈ 0.05 and ≈ 0 here and
-// read as not listening. Ridges and scope answer through shape, which this
-// does not measure; tunnel through its colour cycle.
+// read as not listening. Ridges, scope and timescope answer through shape
+// (timescope and ridges show seconds of history), which this does not
+// measure; tunnel through its colour cycle.
 func TestEffectsFollowTheMusic(t *testing.T) {
 	th, _ := LoadTheme("/nonexistent")
-	shape := map[string]bool{"ridges": true, "scope": true, "tunnel": true}
+	shape := map[string]bool{"ridges": true, "scope": true, "tunnel": true, "timescope": true}
 	for _, name := range []string{"dancing-through-it-10s.ndjson", "thunderstruck-20s.ndjson"} {
 		caps := loadCapture(t, name)
 		for _, e := range Stock() {

@@ -261,3 +261,137 @@ func (e *Fountain) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	}
 	e.drops = live
 }
+
+// Spectrum, the Winamp 2 main-window analyzer: bars are the bands, green at
+// the floor through yellow to red at the top, and a cap hangs at each bar's
+// peak for a moment before dropping.
+type Spectrum struct {
+	peaks, hold []float64 // cap heights in pixels; seconds each cap still hangs
+}
+
+func (*Spectrum) Name() string { return "spectrum" }
+
+const (
+	capHold = 0.25 // seconds a cap hangs at its peak
+	capFall = 0.85 // frame heights a second a cap drops once it lets go
+)
+
+func (e *Spectrum) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
+	deep := th.Color("darker_background")
+	for i := range f.Px {
+		f.Px[i] = deep
+	}
+	n := max(8, f.W/5)
+	if len(e.peaks) != n {
+		e.peaks, e.hold = make([]float64, n), make([]float64, n)
+	}
+	ramp := th.Gradient("green", "green", "yellow", "orange", "red")
+	H := float64(f.H)
+	bw := float64(f.W) / float64(n)
+	for i := range n {
+		h := math.Round(bandAt(a, float64(i)/float64(n-1)) * (H - 3))
+		if h >= e.peaks[i] {
+			e.peaks[i], e.hold[i] = h, capHold
+		} else if e.hold[i] -= dt; e.hold[i] < 0 {
+			e.peaks[i] = math.Max(0, e.peaks[i]-capFall*H*dt)
+		}
+		x0, x1 := int(math.Round(float64(i)*bw)), int(math.Round(float64(i+1)*bw))-1
+		for x := x0; x < x1; x++ {
+			for y := range int(h) {
+				f.Px[(f.H-1-y)*f.W+x] = ramp.At(float64(y) / (H - 1))
+			}
+			blend(f, x, f.H-2-int(math.Round(e.peaks[i])), th.Color("foreground"), 0.85)
+		}
+	}
+}
+
+// Timescope, after AVS: a spectrogram scrolling left, bass at the bottom and
+// colour for loudness, so the song's structure goes by. The screen always
+// holds timescopeSpan seconds whatever its width; a beat ticks the floor.
+type Timescope struct {
+	acc float64 // columns owed
+}
+
+const timescopeSpan = 4.0
+
+func (*Timescope) Name() string { return "timescope" }
+
+func (e *Timescope) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
+	heat := th.Gradient("darker_background", "blue", "magenta", "orange", "yellow", "bright_foreground")
+	e.acc += dt * float64(f.W) / timescopeSpan
+	for ; e.acc >= 1; e.acc-- {
+		for y := range f.H {
+			row := f.Px[y*f.W : (y+1)*f.W]
+			copy(row, row[1:])
+			row[f.W-1] = heat.At(math.Pow(bandAt(a, 1-float64(y)/float64(max(1, f.H-1))), 1.3) * 0.95)
+		}
+		if a.Beat > 0.95 {
+			for y := max(0, f.H-3); y < f.H; y++ {
+				f.Px[y*f.W+f.W-1] = th.Bright
+			}
+		}
+	}
+}
+
+// Synaesthesia, after the XMMS plugin: pitch is position, bass on the left.
+// Each band breathes coloured smoke onto the centre line, as bright as it is
+// loud, and the smoke drifts outward and blurs.
+type Synaesthesia struct {
+	buf, tmp []float64 // 3 floats a pixel
+	acc      float64
+}
+
+func (*Synaesthesia) Name() string { return "synaesthesia" }
+
+const smokeHz = 30.0 // drift steps a second: the smoke moves a pixel a step
+
+func (e *Synaesthesia) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
+	w, h := f.W, f.H
+	deep := th.Color("darker_background")
+	if len(e.buf) != 3*w*h {
+		e.buf, e.tmp = make([]float64, 3*w*h), make([]float64, 3*w*h)
+		for i := range w * h {
+			e.buf[3*i], e.buf[3*i+1], e.buf[3*i+2] = float64(deep.R), float64(deep.G), float64(deep.B)
+		}
+	}
+	if w < 2 || h < 2 {
+		return
+	}
+	d := [3]float64{float64(deep.R), float64(deep.G), float64(deep.B)}
+	hues := th.Gradient(metaballHues...)
+	mid := h / 2
+	e.acc = math.Min(e.acc+dt, 3/smokeHz)
+	for ; e.acc >= 1/smokeHz; e.acc -= 1 / smokeHz {
+		for y := range h {
+			sy := max(mid, y-1) // below the line, smoke comes from the row above
+			if y < mid {
+				sy = min(mid-1, y+1)
+			}
+			for x := range w {
+				o := 3 * (y*w + x)
+				for c := range 3 {
+					s, n := 0.0, 0.0
+					for xx := max(0, x-1); xx <= min(w-1, x+1); xx++ {
+						s += e.buf[3*(sy*w+xx)+c]
+						n++
+					}
+					e.tmp[o+c] = d[c] + (s/n-d[c])*0.96
+				}
+			}
+		}
+		e.buf, e.tmp = e.tmp, e.buf
+		for x := range w {
+			u := float64(x) / float64(w-1)
+			v, c := math.Pow(bandAt(a, u), 1.2), hues.At(u)
+			for _, y := range []int{mid - 1, mid} {
+				o := 3 * (y*w + x)
+				e.buf[o] += (float64(c.R) - e.buf[o]) * v
+				e.buf[o+1] += (float64(c.G) - e.buf[o+1]) * v
+				e.buf[o+2] += (float64(c.B) - e.buf[o+2]) * v
+			}
+		}
+	}
+	for i := range f.Px {
+		f.Px[i] = RGB{u8(e.buf[3*i]), u8(e.buf[3*i+1]), u8(e.buf[3*i+2])}
+	}
+}
