@@ -56,10 +56,15 @@ type Ridges struct {
 	cells Cells  // Render's pixel fallback draws through this
 }
 
+// Ridge pitch and height are fixed in dots rather than shares of the height,
+// so a small pane shows fewer ridges instead of crushing all of them
+// together. Both match the old 16-ridge layout on an 80-row visualizer
+// (fullscreen foot on a 2560×1440 display), so that view is unchanged.
 const (
-	ridgeCount = 16
-	ridgeEvery = 0.11 // seconds between new ridges
-	ridgeEdge  = 0.2  // share of the width each side takes to fade in
+	ridgeSpacing = 15.5 // dots between ridges
+	ridgeAmp     = 61.0 // dots a full-height peak rises; smaller panes scale it down
+	ridgeEvery   = 0.11 // seconds between new ridges
+	ridgeEdge    = 0.2  // share of the width each side takes to fade in
 )
 
 func (*Ridges) Name() string { return "ridges" }
@@ -72,6 +77,8 @@ func (e *Ridges) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 	if len(e.lines) > 0 && len(e.lines[0]) != W {
 		e.lines, e.seeds = nil, nil
 	}
+	bottom, top := float64(H)-2, float64(H)*0.22
+	count := max(1, int(math.Ceil((bottom-top)/ridgeSpacing)))
 	e.since += dt
 	if e.since >= ridgeEvery || len(e.lines) == 0 { // freeze the live ridge, start a new one
 		e.since = math.Mod(e.since, ridgeEvery)
@@ -81,9 +88,9 @@ func (e *Ridges) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 		}
 		e.lines = append([][]float64{live}, e.lines...)
 		e.seeds = append([]float64{rand.Float64() * 100}, e.seeds...)
-		if len(e.lines) > ridgeCount+1 { // one spare to glide out at the back
-			e.lines, e.seeds = e.lines[:ridgeCount+1], e.seeds[:ridgeCount+1]
-		}
+	}
+	if len(e.lines) > count+1 { // one spare to glide out at the back
+		e.lines, e.seeds = e.lines[:count+1], e.seeds[:count+1]
 	}
 	live, seed := e.lines[0], e.seeds[0]
 	for x := range live {
@@ -106,9 +113,8 @@ func (e *Ridges) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 		e.dots[i] = -1
 	}
 	phase := e.since / ridgeEvery
-	bottom, top := float64(H)-2, float64(H)*0.22
-	spacing := (bottom - top) / ridgeCount
-	amp := float64(H) * 0.19
+	spacing := ridgeSpacing
+	amp := math.Min(ridgeAmp, float64(H)*0.19)
 	for k := len(e.lines) - 1; k >= 0; k-- { // back to front, each hiding what is behind it
 		base := bottom - (float64(k)+phase)*spacing
 		prev := 0
@@ -151,7 +157,7 @@ func (e *Ridges) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 				c.Ch[i] = 0
 				continue
 			}
-			depth := (float64(front) + phase) / ridgeCount
+			depth := (float64(front) + phase) / float64(count)
 			col := heat.At(clamp01(e.lines[front][cx*2] / 1.1))
 			if front == 0 {
 				col = th.Glow(col, 0.2)
