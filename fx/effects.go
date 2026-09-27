@@ -61,9 +61,15 @@ func (e *Tunnel) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	}
 }
 
-// Fire: the classic heat-propagation buffer.
-// Heat ← bass, sparks ← treble, flare ← beat.
-type Fire struct{ heat []float64 }
+// Fire: flames as a smooth noise field rising through a flame-shaped mask,
+// so tongues billow and merge instead of flickering pixel by pixel.
+// Height ← bass, flare ← beat, embers ← treble.
+type Fire struct {
+	level  float64 // smoothed flame height
+	embers []ember
+}
+
+type ember struct{ x, y, vx, vy, life float64 }
 
 func (*Fire) Name() string { return "fire" }
 
@@ -72,26 +78,72 @@ func (e *Fire) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	if W < 1 || H < 2 {
 		return
 	}
-	if len(e.heat) != W*H {
-		e.heat = make([]float64, W*H)
+	target := 0.42 + a.Bass*0.33 + a.Beat*0.18
+	rate := 3.0 // rise faster than it falls, like a flame catching
+	if target < e.level {
+		rate = 1.2
 	}
-	for x := range W {
-		e.heat[(H-1)*W+x] = math.Min(1, (0.55+a.Bass*0.6+a.Beat*0.4)*(0.6+rand.Float64()*0.4))
-	}
-	for range int(a.Treble * float64(W) * 0.2) {
-		e.heat[(H-2)*W+rand.IntN(W)] = 1
-	}
+	e.level += (target - e.level) * math.Min(1, dt*rate)
 	heatmap := th.Gradient("darker_background", "red", "orange", "yellow", "bright_foreground")
-	cool := 40 / float64(H)
-	for y := range H - 1 {
+	fh := float64(H)
+	tops := make([]float64, W) // each column's flame height sways, so it forms tongues
+	for x := range tops {
+		tops[x] = e.level * (0.7 + 0.6*fbm(float64(x)/fh*1.4, t*0.35))
+	}
+	for y := range H {
+		v := 1 - float64(y)/fh // 0 at the bottom, 1 at the top
 		for x := range W {
-			src := (x + rand.IntN(3) - 1 + W) % W
-			e.heat[y*W+x] = math.Max(0, e.heat[(y+1)*W+src]-(0.012+rand.Float64()*0.05)*cool)
+			u := float64(x) / fh // square units, so blobs keep their shape at any width
+			// Domain-warped noise scrolling upward: q bends the field, n is the flame body.
+			q := fbm(u*2.2, v*1.6-t*0.9)
+			n := fbm(u*3.2+q*1.1, v*2.4-t*1.9)
+			heat := clamp01((1-v/tops[x])*0.95 + (n-0.5)*1.6)
+			f.Px[y*W+x] = heatmap.At(math.Pow(heat, 1.3) * 0.9) // white only in the hottest cores
 		}
 	}
-	for i, h := range e.heat {
-		f.Px[i] = heatmap.At(h)
+	// Embers: a few sparks that drift up and out on the treble.
+	for range int(a.Treble*a.Treble*8*dt*30 + rand.Float64()*0.5) {
+		e.embers = append(e.embers, ember{rand.Float64() * float64(W), fh * (1 - e.level*0.6), rand.Float64()*6 - 3, -(fh*0.35 + rand.Float64()*fh*0.4), 1})
 	}
+	spark := th.Color("yellow")
+	live := e.embers[:0]
+	for _, m := range e.embers {
+		m.x += (m.vx + math.Sin(t*3+m.y*0.2)*4) * dt
+		m.y += m.vy * dt
+		m.life -= dt * 0.9
+		if m.life <= 0 || m.y < 0 {
+			continue
+		}
+		if ix, iy := int(m.x), int(m.y); ix >= 0 && ix < W && iy >= 0 && iy < H {
+			f.Px[iy*W+ix] = lerp(f.Px[iy*W+ix], lerp(spark, th.Bright, m.life*0.5), m.life)
+		}
+		live = append(live, m)
+	}
+	e.embers = live
+}
+
+// fbm is three octaves of smooth value noise, about 0..1.
+func fbm(x, y float64) float64 {
+	return 0.55*vnoise(x, y) + 0.3*vnoise(x*2.03+17.1, y*2.03-4.7) + 0.15*vnoise(x*4.1-9.3, y*4.1+11.9)
+}
+
+// vnoise is value noise: hashed lattice values, smoothly interpolated.
+func vnoise(x, y float64) float64 {
+	ix, iy := math.Floor(x), math.Floor(y)
+	fx, fy := x-ix, y-iy
+	fx, fy = fx*fx*(3-2*fx), fy*fy*(3-2*fy)
+	i, j := int64(ix), int64(iy)
+	a, b := hash2(i, j), hash2(i+1, j)
+	c, d := hash2(i, j+1), hash2(i+1, j+1)
+	return a + (b-a)*fx + (c-a)*fy + (a-b-c+d)*fx*fy
+}
+
+func hash2(x, y int64) float64 {
+	h := uint64(x)*0x9E3779B97F4A7C15 ^ uint64(y)*0xC2B2AE3D27D4EB4F
+	h ^= h >> 31
+	h *= 0xBF58476D1CE4E5B9
+	h ^= h >> 29
+	return float64(h>>11) / float64(1<<53)
 }
 
 // metaballHues are the theme colours the metaballs cycle through.
