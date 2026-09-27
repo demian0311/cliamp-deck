@@ -56,15 +56,18 @@ type Ridges struct {
 	cells Cells  // Render's pixel fallback draws through this
 }
 
-// Ridge pitch and height are fixed in dots rather than shares of the height,
-// so a small pane shows fewer ridges instead of crushing all of them
-// together. Both match the old 16-ridge layout on an 80-row visualizer
-// (fullscreen foot on a 2560×1440 display), so that view is unchanged.
+// Ridge pitch shrinks with the square root of the pane height below
+// ridgeFullH and holds above it: a small pane shows fewer ridges instead of
+// crushing all of them together, without spreading them as far apart as
+// fullscreen does. Pitch and height match the old 16-ridge layout on an
+// 80-row visualizer (fullscreen foot on a 2560×1440 display), so that view
+// is unchanged.
 const (
-	ridgeSpacing = 15.5 // dots between ridges
-	ridgeAmp     = 61.0 // dots a full-height peak rises; smaller panes scale it down
-	ridgeSweep   = 1.76 // seconds a ridge takes to cross the pane, whatever its size
-	ridgeEdge    = 0.2  // share of the width each side takes to fade in
+	ridgeSpacing = 15.5  // dots between ridges at ridgeFullH and above
+	ridgeFullH   = 320.0 // dot rows in the fullscreen pane
+	ridgeAmp     = 61.0  // dots a full-height peak rises; smaller panes scale it down
+	ridgeSweep   = 1.76  // seconds a ridge takes to cross the pane, whatever its size
+	ridgeEdge    = 0.2   // share of the width each side takes to fade in
 )
 
 func (*Ridges) Name() string { return "ridges" }
@@ -78,7 +81,8 @@ func (e *Ridges) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 		e.lines, e.seeds = nil, nil
 	}
 	bottom, top := float64(H)-2, float64(H)*0.22
-	count := max(1, int(math.Ceil((bottom-top)/ridgeSpacing)))
+	spacing := ridgeSpacing * math.Sqrt(math.Min(1, float64(H)/ridgeFullH))
+	count := max(1, int(math.Ceil((bottom-top)/spacing)))
 	every := ridgeSweep / float64(count) // fewer ridges, each one lasts longer
 	e.since += dt
 	if e.since >= every || len(e.lines) == 0 { // freeze the live ridge, start a new one
@@ -114,7 +118,6 @@ func (e *Ridges) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 		e.dots[i] = -1
 	}
 	phase := e.since / every
-	spacing := ridgeSpacing
 	amp := math.Min(ridgeAmp, float64(H)*0.19)
 	for k := len(e.lines) - 1; k >= 0; k-- { // back to front, each hiding what is behind it
 		base := bottom - (float64(k)+phase)*spacing
