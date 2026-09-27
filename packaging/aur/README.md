@@ -1,4 +1,4 @@
-AUR packaging for `cliamp-deck` (source build). Not yet submitted to the AUR (2026-09-26).
+AUR packaging for `cliamp-deck` (source build). Not yet submitted to the AUR (checked 2026-09-27: RPC returns 0 results; this machine has no AUR SSH key). Ships a `.desktop` entry as a local source, so the launcher needs no `omarchy-tui-install`.
 
 Release bump: tag `vX.Y.Z` and push it, set `pkgver`, reset `pkgrel=1`, then run
 `updpkgsums && makepkg --printsrcinfo > .SRCINFO`, and test with `makepkg -f` using Arch's Go
