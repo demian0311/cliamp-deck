@@ -115,9 +115,10 @@ func (e *Vortex) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 }
 
 // Water, after AVS's Water Bump: a height field running the wave equation.
-// A beat drops a stone at once, sized by the bass, so the splash lands on the
-// beat and its rings spread from there; mids keep a drizzle going and treble
-// adds small fast drops. Crests catch the light, troughs go dark.
+// Every beat drops a stone in the centre, sized by the bass, so the rhythm
+// shows as rings marching outward; each band drips into its own strip
+// (bass on the left) as often as it is loud. Crests catch the light,
+// troughs go dark.
 type Water struct {
 	cur, old []float64
 	acc      float64 // simulated time not yet stepped
@@ -150,14 +151,17 @@ func (e *Water) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 		return
 	}
 	W, H := float64(w), float64(h)
-	if onset(a, &e.prev) {
-		e.drop(w, h, W*0.15+rand.Float64()*W*0.7, H*0.2+rand.Float64()*H*0.6, H*(0.05+0.06*a.Bass), 8*(0.5+a.Bass))
+	if onset(a, &e.prev) { // always the centre, so the beat reads as rings marching out
+		e.drop(w, h, W/2, H/2, H*(0.06+0.08*a.Bass), 10*(0.5+a.Bass))
 	}
-	if rand.Float64() < 2*a.Mid*dt {
-		e.drop(w, h, rand.Float64()*W, rand.Float64()*H, 2.5, 3)
+	bands := a.Bands
+	if len(bands) == 0 {
+		bands = []float64{a.Mid}
 	}
-	if rand.Float64() < a.Treble*6*dt {
-		e.drop(w, h, rand.Float64()*W, rand.Float64()*H, 1.5, 4)
+	for j, v := range bands { // each band rains in its own strip, bass on the left, as often as it is loud
+		if rand.Float64() < 4*v*v*dt {
+			e.drop(w, h, (float64(j)+0.5)/float64(len(bands))*W, H*(0.15+0.7*rand.Float64()), 1.5+1.5*v, 2+4*v)
+		}
 	}
 	e.acc = math.Min(e.acc+dt, 4/waterHz)
 	for ; e.acc >= 1/waterHz; e.acc -= 1 / waterHz {
@@ -262,11 +266,14 @@ func (e *Fountain) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	e.drops = live
 }
 
-// Spectrum, the Winamp 2 main-window analyzer: bars are the bands, green at
-// the floor through yellow to red at the top, and a cap hangs at each bar's
-// peak for a moment before dropping.
+// Spectrum, the Winamp 2 main-window analyzer drawn in braille dots (a
+// GlyphEffect: 2×4 dots a cell): bars are the bands, green at the floor
+// through yellow to red at the top, and a cap hangs at each bar's peak for a
+// moment before dropping.
 type Spectrum struct {
-	peaks, hold []float64 // cap heights in pixels; seconds each cap still hangs
+	peaks, hold []float64 // cap heights in dots; seconds each cap still hangs
+	lit         []uint8   // per dot: 0 dark, 1 bar, 2 cap
+	cells       Cells
 }
 
 func (*Spectrum) Name() string { return "spectrum" }
@@ -276,33 +283,66 @@ const (
 	capFall = 0.85 // frame heights a second a cap drops once it lets go
 )
 
-func (e *Spectrum) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
-	deep := th.Color("darker_background")
-	for i := range f.Px {
-		f.Px[i] = deep
-	}
-	n := max(8, f.W/5)
+func (e *Spectrum) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
+	W, H := c.W*2, c.H*4 // dot resolution
+	n := max(8, c.W/3)
 	if len(e.peaks) != n {
 		e.peaks, e.hold = make([]float64, n), make([]float64, n)
 	}
-	ramp := th.Gradient("green", "green", "yellow", "orange", "red")
-	H := float64(f.H)
-	bw := float64(f.W) / float64(n)
+	if len(e.lit) != W*H {
+		e.lit = make([]uint8, W*H)
+	}
+	clear(e.lit)
+	bw := float64(W) / float64(n)
 	for i := range n {
-		h := math.Round(bandAt(a, float64(i)/float64(n-1)) * (H - 3))
+		h := math.Round(bandAt(a, float64(i)/float64(n-1)) * float64(H-2))
 		if h >= e.peaks[i] {
 			e.peaks[i], e.hold[i] = h, capHold
 		} else if e.hold[i] -= dt; e.hold[i] < 0 {
-			e.peaks[i] = math.Max(0, e.peaks[i]-capFall*H*dt)
+			e.peaks[i] = math.Max(0, e.peaks[i]-capFall*float64(H)*dt)
 		}
-		x0, x1 := int(math.Round(float64(i)*bw)), int(math.Round(float64(i+1)*bw))-1
-		for x := x0; x < x1; x++ {
+		capY := H - 2 - int(math.Round(e.peaks[i]))
+		for x := int(math.Round(float64(i) * bw)); x < int(math.Round(float64(i+1)*bw))-1; x++ { // a dot column of gap
 			for y := range int(h) {
-				f.Px[(f.H-1-y)*f.W+x] = ramp.At(float64(y) / (H - 1))
+				e.lit[(H-1-y)*W+x] = 1
 			}
-			blend(f, x, f.H-2-int(math.Round(e.peaks[i])), th.Color("foreground"), 0.85)
+			if capY >= 0 && e.lit[capY*W+x] == 0 {
+				e.lit[capY*W+x] = 2
+			}
 		}
 	}
+	ramp := th.Gradient("green", "green", "yellow", "orange", "red")
+	bits := [4][2]rune{{0x01, 0x08}, {0x02, 0x10}, {0x04, 0x20}, {0x40, 0x80}}
+	for cy := range c.H {
+		for cx := range c.W {
+			var ch rune
+			bar := false
+			for r := range 4 {
+				for s := range 2 {
+					if k := e.lit[(cy*4+r)*W+cx*2+s]; k > 0 {
+						ch |= bits[r][s]
+						bar = bar || k == 1
+					}
+				}
+			}
+			i := cy*c.W + cx
+			switch {
+			case ch == 0:
+				c.Ch[i] = 0
+			case bar:
+				c.Ch[i], c.Fg[i] = 0x2800+ch, ramp.At(1-(float64(cy)+0.5)/float64(c.H))
+			default:
+				c.Ch[i], c.Fg[i] = 0x2800+ch, th.Color("foreground")
+			}
+		}
+	}
+}
+
+// Render draws the bars as pixels, for anything that cannot show glyphs.
+func (e *Spectrum) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
+	e.cells.Resize(f.W, f.H/2)
+	e.RenderCells(&e.cells, a, t, dt, th)
+	cellsToPixels(f, &e.cells, th.Color("darker_background"))
 }
 
 // Timescope, after AVS: a spectrogram scrolling left, bass at the bottom and
@@ -334,8 +374,9 @@ func (e *Timescope) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 }
 
 // Synaesthesia, after the XMMS plugin: pitch is position, bass on the left.
-// Each band breathes coloured smoke onto the centre line, as bright as it is
-// loud, and the smoke drifts outward and blurs.
+// Each band breathes colour onto the centre line, as bright as it is loud,
+// and it streams outward, up and down, fading as it goes. No blur: a blurred
+// version read as fuzz.
 type Synaesthesia struct {
 	buf, tmp []float64 // 3 floats a pixel
 	acc      float64
@@ -343,7 +384,10 @@ type Synaesthesia struct {
 
 func (*Synaesthesia) Name() string { return "synaesthesia" }
 
-const smokeHz = 30.0 // drift steps a second: the smoke moves a pixel a step
+const (
+	smokeHz   = 30.0 // drift steps a second: the colour moves a pixel a step
+	smokeFade = 0.95 // per step
+)
 
 func (e *Synaesthesia) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	w, h := f.W, f.H
@@ -368,21 +412,18 @@ func (e *Synaesthesia) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 				sy = min(mid-1, y+1)
 			}
 			for x := range w {
-				o := 3 * (y*w + x)
+				o, src := 3*(y*w+x), 3*(sy*w+x)
 				for c := range 3 {
-					s, n := 0.0, 0.0
-					for xx := max(0, x-1); xx <= min(w-1, x+1); xx++ {
-						s += e.buf[3*(sy*w+xx)+c]
-						n++
-					}
-					e.tmp[o+c] = d[c] + (s/n-d[c])*0.96
+					e.tmp[o+c] = d[c] + (e.buf[src+c]-d[c])*smokeFade
 				}
 			}
 		}
 		e.buf, e.tmp = e.tmp, e.buf
 		for x := range w {
 			u := float64(x) / float64(w-1)
-			v, c := math.Pow(bandAt(a, u), 1.2), hues.At(u)
+			v := bandAt(a, u)
+			c := lerp(hues.At(u), th.Bright, v*v*v)                                         // loud bands burn white at the core
+			v *= v * (0.5 + 0.5*math.Sin(float64(x)*2.1+math.Sin(float64(x)*0.37+t*0.4)*3)) // quiet bands stay dark; filaments keep it crisp
 			for _, y := range []int{mid - 1, mid} {
 				o := 3 * (y*w + x)
 				e.buf[o] += (float64(c.R) - e.buf[o]) * v

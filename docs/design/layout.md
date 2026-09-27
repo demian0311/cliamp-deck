@@ -27,8 +27,8 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
   browser mockup replaying the recorded captures.
   `TestEffectsFollowTheMusic` replays the recorded radio and fails any effect whose picture stops tracking the beat
   or loudness (ridges, scope, tunnel and timescope exempt: they answer through shape or history).
-  Ridges is an `fx.GlyphEffect`: the deck calls `RenderCells` and draws coloured braille dots instead of blitting
-  pixels.
+  Ridges and spectrum are `fx.GlyphEffect`s: the deck calls `RenderCells` and draws coloured braille dots instead of
+  blitting pixels.
 - Cycle: `v` anywhere; `←/→` when the visualizer has focus or has taken over; clickable `‹ n/N ›` on its frame.
 - Takeover: click the visualizer, Enter when it has focus, or `V` anywhere. It fills the terminal; click / Enter / Esc / `V`
   returns. A one-line bar (state, track, station, `‹ name ›`) shows for 3 s after any key or mouse move, then fades.
