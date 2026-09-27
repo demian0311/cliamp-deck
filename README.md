@@ -75,6 +75,14 @@ curl -fsSL https://raw.githubusercontent.com/demian0311/cliamp-deck/master/insta
 The script downloads the release binary for your CPU and checks it against the release's `SHA256SUMS`; read
 [`install.sh`](install.sh) first if you prefer.
 
+**Or as a pacman package** (x86_64), so `omarchy update` keeps it current. One line adds the signed
+`[cliamp-deck]` repository and installs it:
+
+```sh
+curl -LO https://github.com/demian0311/cliamp-deck/releases/download/arch-repo/cliamp-deck-keyring.pkg.tar.zst &&
+  sudo pacman -U ./cliamp-deck-keyring.pkg.tar.zst && sudo pacman -Sy cliamp-deck
+```
+
 **Elsewhere, or from source** — needs Go; on Omarchy `mise use -g go@latest` provides it:
 
 ```sh
