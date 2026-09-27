@@ -17,7 +17,7 @@ func TestLayoutShapes(t *testing.T) {
 	cases := []struct {
 		w, h int
 		want shape
-	}{{200, 58, shapeStack}, {100, 58, shapeStack}, {100, 28, shapeStack}, {60, 24, shapeStack},
+	}{{200, 58, shapeSide}, {100, 58, shapeStack}, {100, 28, shapeStack}, {60, 24, shapeStack}, {159, 40, shapeStack},
 		{280, 58, shapeSide}, {50, 20, shapeMini}, {100, 12, shapeMini}}
 	for _, c := range cases {
 		if got := computeLayout(c.w, c.h, layoutState{}).shape; got != c.want {
@@ -47,9 +47,11 @@ func TestStackHeights(t *testing.T) {
 	if eq.eq.h != 10 || eq.eq.y != 6 || eq.sources.h < base.sources.h-1 || eq.vis.h >= base.vis.h {
 		t.Errorf("eq open: %+v", eq)
 	}
-	side := computeLayout(280, 58, layoutState{})
-	if side.vis.x != side.player.w || side.vis.h != 57 || side.sources.w != side.player.w {
-		t.Errorf("side: %+v", side)
+	for _, sz := range [][2]int{{280, 58}, {200, 58}} { // ultrawide and laptop fullscreen
+		side := computeLayout(sz[0], sz[1], layoutState{})
+		if side.vis.x != side.player.w || side.vis.h != sz[1]-1 || side.sources.w != side.player.w {
+			t.Errorf("side %v: %+v", sz, side)
+		}
 	}
 }
 

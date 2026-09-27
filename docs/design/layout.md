@@ -7,7 +7,8 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
 
 ## Shape
 - Winamp stack, full width: player (top) → [EQ, when open] → visualizer → sources (bottom) → status line.
-- Side-by-side when `cols >= 4.5 * rows` (ultrawide 280×58 → side; 200×58, 100×28 → stacked): left column
+- Side-by-side when `cols >= 160` and `cols >= 2.5 * rows` (ultrawide 280×58, laptop fullscreen 200×58 → side;
+  100×58, 100×28 → stacked; was `cols >= 4.5 * rows` until 2026-09-26, which kept 200×58 stacked): left column
   (min(100, 40% of cols)) = player, EQ, sources; visualizer takes the right, full height.
 - Below ~60×24 (current XS): title line, time line, visualizer. Sources appear only when focused, full screen.
 

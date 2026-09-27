@@ -49,7 +49,8 @@ type layoutState struct {
 }
 
 const (
-	sideAspect = 4.5 // side-by-side when cols >= sideAspect * rows (ultrawide 280×58 yes; 200×58, 100×28 no)
+	sideCols   = 160 // side-by-side needs at least this many columns…
+	sideAspect = 2.5 // …and cols >= sideAspect * rows (200×58, 280×58 yes; 100×58, 100×28 no)
 	sideMaxL   = 100 // left column width cap in side-by-side
 	miniCols   = 60  // below this many columns, or miniRows rows, the mini shape applies
 	miniRows   = 16
@@ -73,7 +74,7 @@ func computeLayout(w, h int, s layoutState) layout {
 			l.miniTitle, l.visBoxed = 0, false
 			l.vis = rect{0, 2, w, max(0, body-2)}
 		}
-	case float64(w) >= sideAspect*float64(h):
+	case w >= sideCols && float64(w) >= sideAspect*float64(h):
 		l.shape = shapeSide
 		lw := min(sideMaxL, w*40/100)
 		ph, eh := panelHeights(h, s.eqOpen)
