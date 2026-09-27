@@ -45,8 +45,8 @@ func blend(f *Frame, x, y int, c RGB, k float64) {
 // Ridges: stacked waveform lines scrolling back into the dark, like the
 // Unknown Pleasures sleeve, drawn in braille dots (a GlyphEffect: 2×4 dots a
 // cell). The front ridge is live, following the bands every frame; every
-// ridgeEvery it freezes and a new one takes the front, while the stack glides
-// back continuously. Colour is height, cool to hot, kept as a ridge recedes
+// ridgeSweep/count seconds it freezes and a new one takes the front, while
+// the stack glides back continuously. Colour is height, cool to hot, kept as a ridge recedes
 // and dims; both sides fade into the background.
 type Ridges struct {
 	lines [][]float64 // profiles per dot column, newest (live) first
@@ -63,7 +63,7 @@ type Ridges struct {
 const (
 	ridgeSpacing = 15.5 // dots between ridges
 	ridgeAmp     = 61.0 // dots a full-height peak rises; smaller panes scale it down
-	ridgeEvery   = 0.11 // seconds between new ridges
+	ridgeSweep   = 1.76 // seconds a ridge takes to cross the pane, whatever its size
 	ridgeEdge    = 0.2  // share of the width each side takes to fade in
 )
 
@@ -79,9 +79,10 @@ func (e *Ridges) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 	}
 	bottom, top := float64(H)-2, float64(H)*0.22
 	count := max(1, int(math.Ceil((bottom-top)/ridgeSpacing)))
+	every := ridgeSweep / float64(count) // fewer ridges, each one lasts longer
 	e.since += dt
-	if e.since >= ridgeEvery || len(e.lines) == 0 { // freeze the live ridge, start a new one
-		e.since = math.Mod(e.since, ridgeEvery)
+	if e.since >= every || len(e.lines) == 0 { // freeze the live ridge, start a new one
+		e.since = math.Mod(e.since, every)
 		live := make([]float64, W)
 		if len(e.lines) > 0 {
 			copy(live, e.lines[0])
@@ -112,7 +113,7 @@ func (e *Ridges) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 	for i := range e.dots {
 		e.dots[i] = -1
 	}
-	phase := e.since / ridgeEvery
+	phase := e.since / every
 	spacing := ridgeSpacing
 	amp := math.Min(ridgeAmp, float64(H)*0.19)
 	for k := len(e.lines) - 1; k >= 0; k-- { // back to front, each hiding what is behind it
