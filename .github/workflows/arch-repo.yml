@@ -40,6 +40,12 @@ on:
   release:
     types: [published]
 
+# A hand-published release fires the `release` trigger AND release.yml's
+# dispatch; queue the second run so they never upload over each other.
+concurrency:
+  group: arch-repo
+  cancel-in-progress: false
+
 jobs:
   publish:
     # Excludes the arch-repo release's own `published` event (self-trigger

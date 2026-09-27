@@ -1,0 +1,59 @@
+name: Release
+
+# Pushing a vX.Y.Z tag builds the two static binaries and SHA256SUMS that
+# install.sh and the [cliamp-deck] pacman repo download, attaches them to the
+# tag's release, then starts arch-repo.yml.
+#
+#   git tag v0.3.0 && git push origin v0.3.0
+#
+# A release already published for the tag (to hand-write the notes) keeps
+# them and just gets the assets; otherwise one is created with generated notes.
+#
+# 🔴 arch-repo.yml is started by an explicit dispatch, not by its
+# `release: published` trigger: a release published with GITHUB_TOKEN
+# creates no workflow runs (workflow_dispatch is the documented exception).
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      # Same flags as the hand-built v0.2.0: static, no local paths.
+      - name: Build
+        run: |
+          set -euo pipefail
+          mkdir dist
+          for pair in x86_64:amd64 aarch64:arm64; do
+            name=${pair%%:*} goarch=${pair##*:}
+            CGO_ENABLED=0 GOOS=linux GOARCH=$goarch \
+              go build -trimpath -o "dist/cliamp-deck-linux-$name" .
+          done
+          cd dist && sha256sum cliamp-deck-linux-* > SHA256SUMS && cat SHA256SUMS
+
+      - name: Publish the release
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --verify-tag --generate-notes --title "$TAG"
+          fi
+
+      - name: Publish to the pacman repository
+        run: gh workflow run arch-repo.yml -f version="${TAG#v}"

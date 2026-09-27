@@ -146,19 +146,23 @@ on you.
   Guarded against retriggering on the workflow's own `arch-repo` publish and
   against prereleases.
 
-## Cutting a release (once ARCH_SIGNING_KEY exists)
+## Cutting a release
 
-Tag and publish `vX.Y.Z` on GitHub with `cliamp-deck-linux-x86_64`,
-`cliamp-deck-linux-aarch64` and `SHA256SUMS` attached (however that release is
-made today) — the workflow picks it up automatically. To force a run instead
-of waiting for the trigger, or to re-index without a new version:
+`git tag vX.Y.Z && git push origin vX.Y.Z`. `.github/workflows/release.yml`
+tests, builds both static binaries (`CGO_ENABLED=0 -trimpath`) and
+`SHA256SUMS`, attaches them to the tag's release (creating it with generated
+notes unless one is already published), then dispatches `arch-repo.yml`
+explicitly: a release published with GITHUB_TOKEN triggers no workflows, so
+the `release: published` trigger here only fires for hand-published releases.
+`concurrency: arch-repo` queues the double run that case produces. To force a
+run, or to re-index without a new version:
 
 ```bash
 gh workflow run arch-repo.yml -R demian0311/cliamp-deck -f version=X.Y.Z
 gh workflow run arch-repo.yml -R demian0311/cliamp-deck   # re-index, no rebuild
 ```
 
-## Joining the channel (once signed)
+## Joining the channel
 
 ```bash
 # Arch
