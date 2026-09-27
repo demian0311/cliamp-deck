@@ -38,10 +38,11 @@ A wide terminal puts the visualizer beside the other panels (above). A narrower 
 
 ![Six of the visualizers reacting to a radio stream, full screen](docs/screenshots/stage.gif)
 
-Twelve visualizers, all reacting to the music and all painted from your theme — plasma, tunnel, fire, metaballs,
-ridges, spectrum, timescope, vortex, water, synaesthesia, scope and fountain:
+Over fifteen visualizers, all reacting to the music and all painted from your theme — plasma, terrain, fire,
+metaballs, ridges, spectrum, timescope, vortex, water, synaesthesia, scope, fountain, aurora, skyline, coral, flow,
+life and moire:
 
-![All twelve visualizers in a grid](docs/screenshots/effects.png)
+![Twelve of the visualizers in a grid, including the since-removed tunnel](docs/screenshots/effects.png)
 
 ## Sources and themes
 

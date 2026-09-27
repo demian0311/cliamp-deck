@@ -133,10 +133,10 @@ func TestStockEffectsPaintTheWholeFrame(t *testing.T) {
 // beat or the loudness. Aurora and ripples scored r ≈ 0.05 and ≈ 0 here and
 // read as not listening. Ridges, scope and timescope answer through shape
 // (timescope and ridges show seconds of history), which this does not
-// measure; tunnel through its colour cycle.
+// measure.
 func TestEffectsFollowTheMusic(t *testing.T) {
 	th, _ := LoadTheme("/nonexistent")
-	shape := map[string]bool{"ridges": true, "scope": true, "tunnel": true, "timescope": true}
+	shape := map[string]bool{"ridges": true, "scope": true, "timescope": true}
 	for _, name := range []string{"dancing-through-it-10s.ndjson", "thunderstruck-20s.ndjson"} {
 		caps := loadCapture(t, name)
 		for _, e := range Stock() {

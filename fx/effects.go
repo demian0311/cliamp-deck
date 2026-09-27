@@ -30,37 +30,6 @@ func (e *Plasma) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	}
 }
 
-// Tunnel: a checkered tube flown down its axis.
-// Flight speed ← bass, twist ← mid, ring flash ← beat.
-type Tunnel struct{ z float64 }
-
-func (*Tunnel) Name() string { return "tunnel" }
-
-func (e *Tunnel) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
-	grad := th.Heat("blue", "accent", "cyan")
-	e.z += dt * (0.6 + a.Bass*2.7)
-	twist := math.Sin(t*0.3) * 0.6 * a.Mid
-	for y := range f.H {
-		for x := range f.W {
-			dx := (float64(x) - float64(f.W)/2) / float64(f.W) * 2
-			dy := (float64(y) - float64(f.H)/2) / float64(f.W) * 2 // pixels are square: one scale
-			d := math.Hypot(dx, dy) + 1e-4
-			u := 0.35/d + e.z
-			v := math.Atan2(dy, dx)/math.Pi + twist*u*0.2 + t*0.05
-			ring := int(math.Floor(u * 6))
-			checker := (ring + int(math.Floor(v*8))) & 1
-			c := grad.At(0.35 + frac(u*0.08)*0.6)
-			if checker == 0 {
-				c = lerp(th.Background, c, 0.35)
-			}
-			if ring%4 == 0 {
-				c = th.Glow(c, a.Beat*0.6)
-			}
-			f.Px[y*f.W+x] = lerp(th.Background, c, math.Min(1, d*1.4)) // fade the vanishing point
-		}
-	}
-}
-
 // Fire: flames as a smooth noise field rising through a flame-shaped mask,
 // so tongues billow and merge instead of flickering pixel by pixel. Each
 // column's flame follows one of cliamp's bands, laid low to high across the
