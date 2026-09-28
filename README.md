@@ -1,9 +1,9 @@
 # cliamp-deck
 
 <p align="center">
-  <img src="docs/screenshots/narrow.gif" width="440" alt="The deck in a narrow window: player, EQ, a Winamp-style spectrum turning into fire and metaballs, and a radio playlist">
+  <img src="docs/screenshots/narrow.gif" width="440" alt="The deck in a narrow window: player, a Winamp-style spectrum turning into fire and metaballs, and a Spotify playlist">
 </p>
-<p align="center"><sub>Player, EQ, visualizer and playlist stacked in one narrow window, the way Winamp sat on a 2000s desktop.</sub></p>
+<p align="center"><sub>Player, visualizer and a Spotify playlist stacked in one narrow window, the way Winamp sat on a 2000s desktop.</sub></p>
 
 ## Install (Omarchy)
 
@@ -101,7 +101,7 @@ and a visualizer alongside:
 | ![Slate Light theme with the EQ open and the vortex visualizer](docs/screenshots/light-eq.png) | ![A small terminal: player, a player-height spectrum and sources stacked](docs/screenshots/small.png) |
 | Light themes work too: the EQ open, vortex drawn as ink on paper. | A small terminal stacks the panels; spectrum stays as short as the player. |
 
-Screenshots in Omarchy's Slate Dark and Slate Light themes, playing a cliamp radio stream.
+Screenshots in Omarchy's Slate Dark and Slate Light themes, playing a cliamp radio stream (the opening animation, a Spotify playlist).
 
 ## Using it
 
