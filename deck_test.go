@@ -421,11 +421,11 @@ func TestEKeyTogglesTheEQ(t *testing.T) {
 func TestStreamsHideSkipButtons(t *testing.T) {
 	m := testModel(t)
 	m.h = 40 // tall enough for the transport row
-	if !strings.Contains(stripANSI(m.render()), "«") {
+	if !strings.Contains(stripANSI(m.render()), glyphs.prev) {
 		t.Fatal("a track lost its skip buttons")
 	}
 	m.snap.Track.Stream, m.snap.Duration = true, 0
-	if strings.Contains(stripANSI(m.render()), "«") {
+	if strings.Contains(stripANSI(m.render()), glyphs.prev) {
 		t.Fatal("a stream still shows skip buttons")
 	}
 }
@@ -659,5 +659,40 @@ func TestNarrowListCollapsesTabs(t *testing.T) {
 	}
 	if wide := computeLayout(100, 40, m.ls()).sources; tabsCollapsed(wide) {
 		t.Error("tabs collapsed at 100 columns")
+	}
+}
+
+// Each transport control is drawn where it is clicked, sends its own
+// operation, and only the one matching the playback state is lit.
+func TestTransportButtons(t *testing.T) {
+	m := testModel(t)
+	m.h = 40 // tall enough for the transport row
+	l := m.layout()
+	bs := m.transport(l.player)
+	var ops []string
+	for _, b := range bs {
+		ops = append(ops, b.op)
+		if got := m.render(); !strings.Contains(stripANSI(got), b.glyph) {
+			t.Errorf("%s not drawn", b.op)
+		}
+		next, cmd := m.click(tea.Mouse{Button: tea.MouseLeft, X: b.at.x, Y: b.at.y})
+		if cmd == nil {
+			t.Errorf("clicking %s sent nothing", b.op)
+		}
+		if next.(model).focus != focusPlayer {
+			t.Errorf("clicking %s left focus at %d", b.op, next.(model).focus)
+		}
+	}
+	if strings.Join(ops, " ") != "prev play pause stop next" {
+		t.Fatalf("controls: %v", ops)
+	}
+	lit := map[string]string{"playing": "play", "paused": "pause", "stopped": "stop"}
+	for state, want := range lit {
+		m.snap.State = state
+		for _, b := range m.transport(l.player) {
+			if on := b.colour != cDim && b.colour != cWhite; on != (b.op == want) {
+				t.Errorf("%s: %s lit=%v", state, b.op, on)
+			}
+		}
 	}
 }

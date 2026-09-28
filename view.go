@@ -131,8 +131,9 @@ func (m model) drawTakeoverBar(g *grid, y int) {
 	if source != "" {
 		text += " · " + source
 	}
-	room := max(1, g.w-5-len([]rune(hint)))
-	g.put(3, y, m.marquee(text, room), cWhite)
+	gw := len([]rune(glyph)) // the plain pause is two cells
+	room := max(1, g.w-4-gw-len([]rune(hint)))
+	g.put(2+gw, y, m.marquee(text, room), cWhite)
 	g.put(g.w-len([]rune(hint))-1, y, hint, cDim)
 }
 
@@ -186,14 +187,12 @@ func (m model) drawPlayer(g *grid, r rect) {
 		m.drawTimeLine(g, ix, iy+2, iw)
 	}
 	if ih >= 4 {
-		// A stream has nothing to skip back or forward through, and a narrow
-		// player keeps only play, pause and stop.
-		transport := "«  ►  ‖  ■  »"
-		if m.live() || iw < 30 {
-			transport = "►  ‖  ■"
+		end := ix
+		for _, b := range m.transport(r) {
+			g.put(b.at.x, b.at.y, b.glyph, b.colour)
+			end = b.at.x + b.at.w
 		}
-		g.put(ix, iy+3, transport, cWhite)
-		switch vw := min(12, iw-len([]rune(transport))-6); {
+		switch vw := min(12, iw-(end-ix)-6); {
 		case meterW > 0 && !volTop: // under the meter, the same width, so the two line up
 			g.put(meterX-4, iy+3, "vol", cDim)
 			m.drawVolume(g, meterX, iy+3, meterW, m.snap.Volume)
@@ -541,11 +540,11 @@ func trackTitle(artist, title string) string {
 func (m model) stateGlyph() (string, cls) {
 	switch m.snap.State {
 	case "playing":
-		return "»", cGreen
+		return glyphs.play, cGreen
 	case "paused":
-		return "‖", cYellow
+		return glyphs.pause, cYellow
 	}
-	return "■", cDim
+	return glyphs.stop, cDim
 }
 
 func (m model) live() bool {
@@ -582,7 +581,8 @@ func (m model) drawTitleLine(g *grid, x, y, w int) {
 	glyph, gc := m.stateGlyph()
 	title, _ := m.trackText()
 	g.put(x, y, glyph, gc)
-	g.put(x+2, y, m.marquee(title, max(1, w-2)), cWhite)
+	gw := len([]rune(glyph)) + 1 // the plain pause is two cells
+	g.put(x+gw, y, m.marquee(title, max(1, w-gw)), cWhite)
 }
 
 // drawTimeLine is a thin progress bar for a track. A stream has no length, so

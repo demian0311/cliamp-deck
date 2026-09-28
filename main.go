@@ -20,7 +20,9 @@ func main() {
 	statePath := flag.String("state", defaultStatePath(), "where the deck keeps its EQ and visualizer between runs")
 	spawn := flag.Bool("spawn", true, "start `cliamp --daemon` when nothing answers on the socket")
 	keep := flag.Bool("keep-playing", false, "leave cliamp playing after the deck quits")
+	icons := flag.String("icons", "auto", "control icons: nerd (needs a Nerd Font), plain, or auto (nerd on Omarchy)")
 	flag.Parse()
+	pickGlyphs(*icons, *theme)
 
 	c := client{sock: *sock}
 	if !c.alive() && *spawn {

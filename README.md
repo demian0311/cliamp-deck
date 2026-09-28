@@ -98,6 +98,7 @@ which remote operations it supports, and exits with an update hint if any it use
 ```sh
 cliamp-deck                                   # starts `cliamp --daemon` if nothing is running
 cliamp-deck --spawn=false --socket PATH       # attach to a specific instance only
+cliamp-deck --icons plain                     # plain player icons, for a terminal font without Nerd Font glyphs
 ```
 
 ## Using it

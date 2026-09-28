@@ -492,6 +492,11 @@ func (m model) click(ev tea.Mouse) (tea.Model, tea.Cmd) {
 		}
 	case l.player.has(x, y):
 		m.focus = focusPlayer
+		for _, b := range m.transport(l.player) {
+			if b.hit().has(x, y) {
+				return m, m.run(b.label, b.op, nil)
+			}
+		}
 	}
 	return m, nil
 }
