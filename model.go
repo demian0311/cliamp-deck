@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"os"
 	"slices"
 	"time"
@@ -505,6 +506,7 @@ func (m model) onState(msg stateMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.rememberTrack()
+	m.rememberPosition(false)
 	if m.tab == tabQueue && m.snap.PlaylistRevision != m.queueRev {
 		m.queueRev = m.snap.PlaylistRevision
 		cmds = append(cmds, fetchQueue(m.c))
@@ -526,12 +528,19 @@ func (m *model) resume() tea.Cmd {
 		return nil
 	}
 	label := cmp.Or(t.Station, t.Title, t.Path)
-	if s := m.saved; s.LastPlaylist != "" {
+	s, c := m.saved, m.c
+	if s.LastPlaylist != "" {
 		m.say("resuming " + cmp.Or(s.LastPlaylistName, label) + "…")
-		return resumePlaylist(m.c, s.LastProvider, s.LastPlaylist, t.Path, label)
+		return resumePlaylist(c, s.LastProvider, s.LastPlaylist, t.Path, label, s.LastPosition)
 	}
 	m.say("resuming " + label + "…")
-	return m.run("playing "+label, "track.play", map[string]*ipc.TrackInfo{"track": t})
+	return func() tea.Msg {
+		_, err := c.op("track.play", map[string]*ipc.TrackInfo{"track": t})
+		if err == nil {
+			seekWhenReady(c, t.Path, s.LastPosition)
+		}
+		return opMsg{label: "playing " + label, err: err}
+	}
 }
 
 // resumePlaylist reloads a provider playlist and moves to the track that was
@@ -539,7 +548,7 @@ func (m *model) resume() tea.Cmd {
 // playlist arrives in pages after the load returns, so the track is looked
 // for until resumeWait runs out; if it never turns up the playlist just plays
 // from the top.
-func resumePlaylist(c client, provider, playlist, path, label string) tea.Cmd {
+func resumePlaylist(c client, provider, playlist, path, label string, pos float64) tea.Cmd {
 	return func() tea.Msg {
 		if _, err := c.op("provider.load", map[string]string{"provider": provider, "playlist": playlist}); err != nil {
 			return opMsg{label: "resume", err: err}
@@ -547,6 +556,9 @@ func resumePlaylist(c client, provider, playlist, path, label string) tea.Cmd {
 		for deadline := time.Now().Add(resumeWait); ; time.Sleep(resumePoll) {
 			if i, ok := queueIndex(c, path); ok {
 				_, err := c.op("queue.play", map[string]int{"index": i})
+				if err == nil {
+					seekWhenReady(c, path, pos)
+				}
 				return opMsg{label: "playing " + label, err: err}
 			}
 			if time.Now().After(deadline) {
@@ -560,6 +572,56 @@ const (
 	resumeWait = 10 * time.Second
 	resumePoll = 500 * time.Millisecond
 )
+
+// seekWhenReady moves a just-started track to pos once cliamp reports it
+// playing and seekable (a Spotify track takes a moment to open). Positions
+// within the first or last few seconds are not worth a jump.
+func seekWhenReady(c client, path string, pos float64) {
+	if pos < resumeMinPos {
+		return
+	}
+	for deadline := time.Now().Add(resumeWait); time.Now().Before(deadline); time.Sleep(resumeSeekPoll) {
+		s, err := c.state()
+		if err != nil {
+			return
+		}
+		if s == nil || s.Track == nil || s.Track.Path != path || !s.Seekable {
+			continue
+		}
+		if s.Duration > 0 && pos > s.Duration-resumeMinPos {
+			return
+		}
+		c.op("seek.absolute", map[string]float64{"value": pos})
+		return
+	}
+}
+
+const (
+	resumeMinPos   = 5.0 // seconds
+	resumeSeekPoll = 200 * time.Millisecond
+	positionEvery  = 10.0 // seconds of playback between saves of LastPosition
+)
+
+// rememberPosition saves how far into the track playback is, every
+// positionEvery seconds while playing, and always when force is set (quit).
+func (m *model) rememberPosition(force bool) {
+	if m.snap == nil {
+		return
+	}
+	t := m.snap.Track
+	if t == nil || m.saved.LastTrack == nil || t.Path != m.saved.LastTrack.Path {
+		return
+	}
+	pos := m.snap.Position
+	if t.Stream || !m.snap.Seekable {
+		pos = 0
+	}
+	if pos == m.saved.LastPosition || (!force && math.Abs(pos-m.saved.LastPosition) < positionEvery) {
+		return
+	}
+	m.saved.LastPosition = pos
+	m.persist()
+}
 
 // queueIndex finds a track in cliamp's live playlist by path, a page at a time.
 func queueIndex(c client, path string) (int, bool) {
@@ -601,7 +663,7 @@ func (m *model) rememberTrack() {
 	}
 	keep := *t
 	keep.StreamTitle, keep.Index, keep.QueuePosition = "", 0, 0 // stale by next run
-	m.saved.LastTrack = &keep
+	m.saved.LastTrack, m.saved.LastPosition = &keep, 0
 	m.persist()
 }
 

@@ -13,6 +13,7 @@ import (
 func (m model) key(k string) (tea.Model, tea.Cmd) {
 	if k == "ctrl+c" {
 		m.rememberSource()
+		m.rememberPosition(true)
 		return m, tea.Quit
 	}
 	if m.searching {
@@ -59,6 +60,7 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 	switch k {
 	case "q":
 		m.rememberSource()
+		m.rememberPosition(true)
 		return m, tea.Quit
 	case "tab":
 		m.focus = (m.focus + 1) % focusCount

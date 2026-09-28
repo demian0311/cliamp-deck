@@ -696,3 +696,32 @@ func TestTransportButtons(t *testing.T) {
 		}
 	}
 }
+
+// The position is saved every positionEvery seconds of playback and on quit,
+// and is reset when the track changes.
+func TestRememberPosition(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.toml")
+	m := newModel(client{sock: "/nonexistent"}, "/nonexistent/colors.toml", path)
+	song := &ipc.TrackInfo{Path: "spotify:track:1"}
+	at := func(pos float64) {
+		m = upd(m, stateMsg{snap: &ipc.RuntimeSnapshot{State: "playing", Track: song, Position: pos, Seekable: true, Duration: 200}})
+	}
+	at(3)
+	if got := loadState(path).LastPosition; got != 0 {
+		t.Fatalf("saved %v after 3 s", got)
+	}
+	at(12)
+	if got := loadState(path).LastPosition; got != 12 {
+		t.Fatalf("saved %v after 12 s", got)
+	}
+	at(14)
+	m = key(m, "q")
+	if got := loadState(path).LastPosition; got != 14 {
+		t.Fatalf("quit saved %v", got)
+	}
+	song = &ipc.TrackInfo{Path: "spotify:track:2"}
+	at(1)
+	if got := loadState(path).LastPosition; got != 0 {
+		t.Fatalf("new track kept %v", got)
+	}
+}

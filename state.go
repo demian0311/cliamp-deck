@@ -36,6 +36,10 @@ type deckState struct {
 	// track. Empty when the last thing started was a single track or station.
 	LastProvider, LastPlaylist, LastPlaylistName string
 
+	// LastPosition is how far into LastTrack playback had got, in seconds,
+	// so resume carries on mid-track. 0 for a stream or a track just begun.
+	LastPosition float64
+
 	// SyncMs is how long the deck holds each spectrum frame before drawing
 	// it, so the picture lands with the sound (see syncDefaultMs).
 	SyncMs int
@@ -95,6 +99,10 @@ func loadState(path string) deckState {
 			s.LastPlaylist = unquote(v)
 		case "last_playlist_name":
 			s.LastPlaylistName = unquote(v)
+		case "last_position":
+			if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
+				s.LastPosition = f
+			}
 		case "sync_ms":
 			if n, err := strconv.Atoi(v); err == nil {
 				s.SyncMs = max(0, min(n, syncMaxMs))
@@ -130,10 +138,10 @@ func saveState(path string, s deckState) error {
 	}
 	body := fmt.Sprintf("# cliamp-deck state, rewritten by the deck\nvisualizer = %q\neq_preset = %q\neq_bands = [%s]\n"+
 		"source = %q\nsource_country = %q\nsource_in_country = %t\nsource_selected = %q\nlast_track = %q\n"+
-		"last_provider = %q\nlast_playlist = %q\nlast_playlist_name = %q\nsync_ms = %d\n",
+		"last_provider = %q\nlast_playlist = %q\nlast_playlist_name = %q\nlast_position = %s\nsync_ms = %d\n",
 		s.Visualizer, s.EQPreset, strings.Join(bands, ", "),
 		s.Source, s.SourceCountry, s.SourceInCountry, s.SourceSelected, last,
-		s.LastProvider, s.LastPlaylist, s.LastPlaylistName, s.SyncMs)
+		s.LastProvider, s.LastPlaylist, s.LastPlaylistName, strconv.FormatFloat(s.LastPosition, 'f', 1, 64), s.SyncMs)
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(body), 0o644); err != nil {
 		return err

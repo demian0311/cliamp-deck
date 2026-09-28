@@ -134,14 +134,19 @@ func TestZTogglesShuffle(t *testing.T) {
 // playlist and moves to the track it was on, rather than playing it alone.
 func TestResumeReloadsThePlaylist(t *testing.T) {
 	var ops []string
-	var played any
+	var played, seeked any
 	var mu sync.Mutex
 	sock := fakeCliamp(t, func(req map[string]any) string {
 		mu.Lock()
 		defer mu.Unlock()
 		op, _ := req["operation"].(string)
-		ops = append(ops, op)
 		reply := map[string]any{"version": 2, "id": req["id"], "ok": true}
+		if req["method"] == "state.get" {
+			reply["snapshot"] = map[string]any{"state": "playing", "seekable": true, "duration": 200,
+				"track": map[string]any{"path": "spotify:track:5"}}
+		} else {
+			ops = append(ops, op)
+		}
 		switch op {
 		case "queue.list":
 			var tracks []map[string]any
@@ -151,6 +156,8 @@ func TestResumeReloadsThePlaylist(t *testing.T) {
 			reply["result"] = map[string]any{"tracks": tracks}
 		case "queue.play":
 			played = req["params"].(map[string]any)["index"]
+		case "seek.absolute":
+			seeked = req["params"].(map[string]any)["value"]
 		}
 		b, _ := json.Marshal(reply)
 		return string(b)
@@ -159,6 +166,7 @@ func TestResumeReloadsThePlaylist(t *testing.T) {
 	m := newModel(client{sock: sock}, "/nonexistent/colors.toml", path)
 	m.rememberPlaylist("spotify", "pl1", "Road Trip")
 	m.saved.LastTrack = &ipc.TrackInfo{Path: "spotify:track:5", Title: "Five"}
+	m.saved.LastPosition = 42
 	m.persist()
 
 	m = newModel(client{sock: sock}, "/nonexistent/colors.toml", path)
@@ -172,8 +180,8 @@ func TestResumeReloadsThePlaylist(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if strings.Join(ops, " ") != "provider.load queue.list queue.play" || played != float64(5) {
-		t.Fatalf("ops %v, played index %v", ops, played)
+	if strings.Join(ops, " ") != "provider.load queue.list queue.play seek.absolute" || played != float64(5) || seeked != float64(42) {
+		t.Fatalf("ops %v, played index %v, seeked to %v", ops, played, seeked)
 	}
 
 	m.rememberPlaylist("", "", "") // a lone track was started since
