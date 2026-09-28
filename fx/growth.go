@@ -294,7 +294,7 @@ func (e *Braille) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 	stretch := 1 - 0.3*a.Mid
 	for cy := range c.H {
 		for cx := range c.W {
-			fx, fy := float64(cx)-float64(c.W)/2, float64(cy)-float64(c.H)/2 // from the centre, so the stretch zooms about it
+			fx, fy := float64(cx)-float64(c.W)/2, float64(cy)-float64(c.H)/2               // from the centre, so the stretch zooms about it
 			p := e.hue + 2.2*fbm(fx*0.03*stretch+e.drift*0.7, fy*0.07*stretch-e.drift*0.4) // several hues at once, in drifting bands
 			col := lerp(th.Stage, hues.At(frac(p)), lum)
 			i := cy*c.W + cx
