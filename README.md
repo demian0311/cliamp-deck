@@ -21,14 +21,16 @@ theme's colours. All audio, providers and the spectrum come from a running cliam
 1. **Player**: what's playing and from which station, live or elapsed time, the level meters and volume, and
    the play/pause/stop controls.
 2. **EQ**: ten bands with cliamp's presets. `e` opens and closes it from anywhere; it is hidden until you want it.
-3. **Visualizer**: `v` or the `‹ n/12 ›` arrows cycle the twelve effects; click it or press Enter to take over the
-   whole terminal.
+3. **Visualizer**: `v` or the `‹ n/N ›` arrows cycle the effects; click it or press Enter to take over the whole
+   terminal. Spectrum, the default, stays as short as the player and stands in for its level meter, leaving the
+   room to the list.
 4. **Sources**: cliamp's sources (radio by country, plus anything else you have set up), with **queue** and
    **history** tabs.
 5. **Status line**: the keys for whichever panel has focus (Tab moves focus), and whether cliamp is connected.
 
 A wide terminal puts the visualizer beside the other panels (above). A narrower or taller one stacks them
-(left). Resize the terminal and the panels move to fit.
+(left). Resize the terminal and the panels move to fit; down to 30 columns every panel stays, giving up detail
+instead (the tabs collapse to the active one, long titles scroll).
 
 </td>
 </tr>
@@ -36,13 +38,13 @@ A wide terminal puts the visualizer beside the other panels (above). A narrower 
 
 ## Visualizers
 
-![Six of the visualizers reacting to a radio stream, full screen](docs/screenshots/stage.gif)
+![Aurora, skyline, coral, flow, life and moire reacting to a radio stream, full screen](docs/screenshots/stage.gif)
 
 Over fifteen visualizers, all reacting to the music and all painted from your theme — plasma, fire, metaballs,
 ridges, spectrum, timescope, vortex, water, synaesthesia, scope, fountain, aurora, skyline, coral, flow, life, moire
 and braille:
 
-![Twelve of the visualizers in a grid, including the since-removed tunnel](docs/screenshots/effects.png)
+![Every visualizer in a grid, in the order v cycles them](docs/screenshots/effects.png)
 
 ## Sources and themes
 
@@ -53,8 +55,8 @@ and a visualizer alongside:
 
 | | |
 |---|---|
-| ![Slate Light theme with the EQ open and the vortex visualizer](docs/screenshots/light-eq.png) | ![A small terminal: player, spectrum and sources stacked](docs/screenshots/small.png) |
-| Light themes work too: the EQ open, vortex drawn as ink on paper. | A small terminal stacks the panels. |
+| ![Slate Light theme with the EQ open and the vortex visualizer](docs/screenshots/light-eq.png) | ![A small terminal: player, a player-height spectrum and sources stacked](docs/screenshots/small.png) |
+| Light themes work too: the EQ open, vortex drawn as ink on paper. | A small terminal stacks the panels; spectrum stays as short as the player. |
 
 Screenshots in Omarchy's Slate Dark and Slate Light themes, playing a cliamp radio stream.
 
