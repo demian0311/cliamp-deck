@@ -188,7 +188,7 @@ func (m model) drawPlayer(g *grid, r rect) {
 	if ih >= 4 {
 		// A stream has nothing to skip back or forward through, and a narrow
 		// player keeps only play, pause and stop.
-		transport := "◄◄  ►  ‖  ■  ►►"
+		transport := "«  ►  ‖  ■  »"
 		if m.live() || iw < 30 {
 			transport = "►  ‖  ■"
 		}

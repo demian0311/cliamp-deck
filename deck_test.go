@@ -421,11 +421,11 @@ func TestEKeyTogglesTheEQ(t *testing.T) {
 func TestStreamsHideSkipButtons(t *testing.T) {
 	m := testModel(t)
 	m.h = 40 // tall enough for the transport row
-	if !strings.Contains(stripANSI(m.render()), "◄◄") {
+	if !strings.Contains(stripANSI(m.render()), "«") {
 		t.Fatal("a track lost its skip buttons")
 	}
 	m.snap.Track.Stream, m.snap.Duration = true, 0
-	if strings.Contains(stripANSI(m.render()), "◄◄") {
+	if strings.Contains(stripANSI(m.render()), "«") {
 		t.Fatal("a stream still shows skip buttons")
 	}
 }
