@@ -725,3 +725,28 @@ func TestRememberPosition(t *testing.T) {
 		t.Fatalf("new track kept %v", got)
 	}
 }
+
+// A restarted daemon forgets shuffle: the deck turns it back on, does not
+// mistake the daemon's old mode for a change, and saves later changes.
+func TestShuffleSurvivesARestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.toml")
+	m := newModel(client{sock: "/nonexistent"}, "/nonexistent/colors.toml", path)
+	m.saved.Shuffle = true
+	m.persist()
+	snap := func(on bool) stateMsg { return stateMsg{snap: &ipc.RuntimeSnapshot{State: "stopped", Shuffle: &on}} }
+
+	m = newModel(client{sock: "/nonexistent"}, "/nonexistent/colors.toml", path)
+	m.snap = snap(false).snap
+	if m.reapplyShuffle() == nil {
+		t.Fatal("shuffle not reapplied")
+	}
+	m = upd(m, snap(false)) // the daemon's own mode, before the reapply lands
+	if !loadState(path).Shuffle {
+		t.Fatal("the daemon's mode overwrote the saved one")
+	}
+	m = upd(m, snap(true))
+	m = upd(m, snap(false)) // the listener turns it off
+	if loadState(path).Shuffle {
+		t.Fatal("turning shuffle off was not saved")
+	}
+}

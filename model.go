@@ -109,7 +109,11 @@ type model struct {
 	statePath string
 	saved     deckState
 	eqApplied bool // the saved EQ has been reapplied since attaching
-	eqDirty   bool // an EQ change is waiting for fresh state to be saved
+	// shuffleSynced: cliamp's shuffle has matched the saved one since
+	// attaching, so a change from here on is the listener's and is saved.
+	shuffleSynced bool
+	attachedAt    time.Time
+	eqDirty       bool // an EQ change is waiting for fresh state to be saved
 
 	// Reopening the sources list where it was left: restorePending until the
 	// providers arrive, restoring while that provider's list loads.
@@ -504,7 +508,12 @@ func (m model) onState(msg stateMsg) (tea.Model, tea.Cmd) {
 		if c := m.resume(); c != nil {
 			cmds = append(cmds, c)
 		}
+		m.attachedAt = time.Now()
+		if c := m.reapplyShuffle(); c != nil {
+			cmds = append(cmds, c)
+		}
 	}
+	m.rememberShuffle()
 	m.rememberTrack()
 	m.rememberPosition(false)
 	if m.tab == tabQueue && m.snap.PlaylistRevision != m.queueRev {
@@ -665,6 +674,35 @@ func (m *model) rememberTrack() {
 	keep.StreamTitle, keep.Index, keep.QueuePosition = "", 0, 0 // stale by next run
 	m.saved.LastTrack, m.saved.LastPosition = &keep, 0
 	m.persist()
+}
+
+// reapplyShuffle restores the saved shuffle mode, which cliamp's daemon
+// forgets on restart.
+func (m model) reapplyShuffle() tea.Cmd {
+	on := m.snap.Shuffle
+	if on == nil || *on == m.saved.Shuffle {
+		return nil
+	}
+	mode := map[bool]string{true: "on", false: "off"}[m.saved.Shuffle]
+	return m.run("", "shuffle", map[string]string{"name": mode})
+}
+
+// rememberShuffle saves shuffle changes made after attaching, from z, a click
+// or `cliamp shuffle`. Until cliamp matches the saved mode (reapplyShuffle
+// is in flight) its old mode is not mistaken for a change; if it never
+// matches, the deck stops waiting after pendingTimeout.
+func (m *model) rememberShuffle() {
+	if m.snap.Shuffle == nil {
+		return
+	}
+	on := *m.snap.Shuffle
+	switch {
+	case !m.shuffleSynced:
+		m.shuffleSynced = on == m.saved.Shuffle || time.Since(m.attachedAt) > pendingTimeout
+	case on != m.saved.Shuffle:
+		m.saved.Shuffle = on
+		m.persist()
+	}
 }
 
 // reapplyEQ restores the EQ the deck saved, since cliamp's daemon forgets it.
