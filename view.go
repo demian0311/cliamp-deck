@@ -145,12 +145,12 @@ func (m model) drawPlayer(g *grid, r rect) {
 	}
 	mw := 0 // the meter's width, plus the gap before it
 	meterX, meterW := 0, 0
-	if iw > 34 && ih >= 2 {
-		meterW = min(24, iw/4)
+	volTop := m.spectrumShown() && iw >= 24 // the spectrum panel is the meter; volume takes its place
+	if (iw > 34 && ih >= 2) || volTop {
+		meterW = min(24, max(6, iw/4))
 		meterX = ix + iw - meterW
 		mw = meterW + 1
 	}
-	volTop := m.spectrumShown() && meterW > 0 // the spectrum panel is the meter; volume takes its place
 	switch {
 	case volTop:
 		g.put(meterX-4, iy, "vol", cDim)
@@ -160,6 +160,14 @@ func (m model) drawPlayer(g *grid, r rect) {
 		m.drawMeter(g, meterX, iy, meterW)
 	}
 	m.drawTitleLine(g, ix, iy, iw-mw)
+	if ih == 2 { // two rows: the time matters more than the source
+		tw := iw - mw // beside the meter's second row
+		if volTop {
+			tw = iw // the volume is one row
+		}
+		m.drawTimeLine(g, ix, iy+1, tw)
+		return
+	}
 	if ih >= 2 {
 		_, source := m.trackText()
 		parts := []string{}
@@ -172,21 +180,26 @@ func (m model) drawPlayer(g *grid, r rect) {
 		if volTop {
 			sw = iw - 2 // no meter beside it
 		}
-		g.put(ix+2, iy+1, fit(strings.Join(parts, " · "), sw), cCyan)
+		g.put(ix+2, iy+1, m.marquee(strings.Join(parts, " · "), max(1, sw)), cCyan)
 	}
 	if ih >= 3 {
 		m.drawTimeLine(g, ix, iy+2, iw)
 	}
 	if ih >= 4 {
-		// A stream has nothing to skip back or forward through.
+		// A stream has nothing to skip back or forward through, and a narrow
+		// player keeps only play, pause and stop.
 		transport := "◄◄  ►  ‖  ■  ►►"
-		if m.live() {
+		if m.live() || iw < 30 {
 			transport = "►  ‖  ■"
 		}
 		g.put(ix, iy+3, transport, cWhite)
-		if meterW > 0 && !volTop { // under the meter, the same width, so the two line up
+		switch vw := min(12, iw-len([]rune(transport))-6); {
+		case meterW > 0 && !volTop: // under the meter, the same width, so the two line up
 			g.put(meterX-4, iy+3, "vol", cDim)
 			m.drawVolume(g, meterX, iy+3, meterW, m.snap.Volume)
+		case meterW == 0 && vw >= 4: // too narrow for the meter: a short bar beside the transport
+			g.put(ix+iw-vw-4, iy+3, "vol", cDim)
+			m.drawVolume(g, ix+iw-vw, iy+3, vw, m.snap.Volume)
 		}
 	}
 }
@@ -339,7 +352,7 @@ func (m model) drawEQ(g *grid, r rect) {
 func (m model) drawSources(g *grid, r rect) {
 	focused := m.focus == focusSources
 	m.drawFrame(g, r, "", cYellow, focusSources)
-	for i, t := range tabRects(r) {
+	for i, t := range tabRects(r, m.tab) {
 		c := cDim
 		switch {
 		case i == m.tab && focused:
@@ -347,8 +360,12 @@ func (m model) drawSources(g *grid, r rect) {
 		case i == m.tab:
 			c = cTitle
 		}
-		if t.x+t.w < r.x+r.w-1 {
-			g.put(t.x, t.y, " "+tabNames[i]+" ", c)
+		label := " " + tabNames[i] + " "
+		if tabsCollapsed(r) {
+			label = " ‹ " + tabNames[i] + " › "
+		}
+		if !t.empty() && t.x+t.w < r.x+r.w-1 {
+			g.put(t.x, t.y, label, c)
 		}
 	}
 	ctx := ""
@@ -365,8 +382,10 @@ func (m model) drawSources(g *grid, r rect) {
 		ctx += " …"
 	}
 	if ctx != "" {
-		tr := tabRects(r)
-		end := tr[tabCount-1].x + tr[tabCount-1].w + 1
+		end := 0
+		for _, t := range tabRects(r, m.tab) {
+			end = max(end, t.x+t.w+1)
+		}
 		if room := r.x + r.w - 2 - end; room > 4 {
 			g.put(end, r.y, fit(" "+ctx+" ", room), cWhite)
 		}
@@ -408,7 +427,7 @@ func (m model) drawSources(g *grid, r rect) {
 			c = it.color
 		}
 		right := it.right
-		if len([]rune(right)) > rows.w/3 {
+		if len([]rune(right)) > rows.w/3 || rows.w < 40 { // narrow: the label keeps the room
 			right = ""
 		}
 		left := " " + mark + it.label

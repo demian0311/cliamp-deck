@@ -53,8 +53,9 @@ const (
 	sideCols   = 160 // side-by-side needs at least this many columns…
 	sideAspect = 2.5 // …and cols >= sideAspect * rows (200×58, 280×58 yes; 100×58, 100×28 no)
 	sideMaxL   = 100 // left column width cap in side-by-side
-	miniCols   = 60  // below this many columns, or miniRows rows, the mini shape applies
-	miniRows   = 16
+	miniCols   = 30  // below this many columns, or miniRows rows, the mini shape applies;
+	miniRows   = 10  // above it every panel sheds detail rather than disappearing (issue #5)
+	shortRows  = 20  // below this many rows the player drops to title and time, and the list to 3 rows
 )
 
 func computeLayout(w, h int, s layoutState) layout {
@@ -97,19 +98,33 @@ func computeLayout(w, h int, s layoutState) layout {
 		l.shape = shapeStack
 		ph, eh := panelHeights(h, s.eqOpen)
 		minSrc := 8
-		if h < 30 {
+		switch {
+		case h < shortRows:
+			minSrc = 3
+		case h < 30:
 			minSrc = 5
 		}
 		// Split as if the EQ were closed, then take the EQ's rows from the
 		// visualizer, so opening the EQ never shortens the list.
 		avail := max(0, body-ph)
 		if s.compact { // spectrum stays the player's height; the EQ comes out of the list
-			vh := min(ph, max(0, avail-eh))
+			vh := min(ph, max(0, avail-eh-minSrc))
+			if vh < 3 { // a frame with no rows inside: give the room to the list
+				vh = 0
+			}
 			l.player, l.vis = rect{0, 0, w, ph}, rect{0, ph + eh, w, vh}
 			if eh > 0 {
 				l.eq = rect{0, ph, w, eh}
 			}
 			l.sources = rect{0, ph + eh + vh, w, max(0, avail-eh-vh)}
+			break
+		}
+		if avail-eh < 3+minSrc { // no room for both: the list stays, the visualizer goes
+			l.player = rect{0, 0, w, ph}
+			if eh > 0 {
+				l.eq = rect{0, ph, w, eh}
+			}
+			l.sources = rect{0, ph + eh, w, max(0, avail-eh)}
 			break
 		}
 		vh := int(float64(avail)*0.6 + 0.5)
@@ -145,6 +160,9 @@ func panelHeights(h int, eqOpen bool) (player, eq int) {
 		if eqOpen {
 			eq = 7
 		}
+	}
+	if h < shortRows {
+		player = 4 // title and time
 	}
 	return player, eq
 }

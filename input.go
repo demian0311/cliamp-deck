@@ -391,9 +391,23 @@ func visControls(l layout) (prev, next rect) {
 	return rect{x, l.vis.y, 2, 1}, rect{x + 6, l.vis.y, 2, 1}
 }
 
+// tabsCollapsed reports a list too narrow for every tab label: only the
+// active tab shows, as ‹ name ›, and clicking it moves to the next.
+func tabsCollapsed(r rect) bool {
+	w := 4
+	for _, n := range tabNames {
+		w += len(n) + 3
+	}
+	return r.w < w+10 // room left for the list's context label
+}
+
 // tabRects are the clickable tab labels on the list's top border.
-func tabRects(r rect) [tabCount]rect {
+func tabRects(r rect, active int) [tabCount]rect {
 	var out [tabCount]rect
+	if tabsCollapsed(r) {
+		out[active] = rect{r.x + 2, r.y, len(tabNames[active]) + 6, 1}
+		return out
+	}
 	x := r.x + 2
 	for i, n := range tabNames {
 		w := len(n) + 2
@@ -435,8 +449,11 @@ func (m model) click(ev tea.Mouse) (tea.Model, tea.Cmd) {
 		m.focus, m.take = focusVis, true
 	case l.sources.has(x, y):
 		if y == l.sources.y {
-			for i, t := range tabRects(l.sources) {
+			for i, t := range tabRects(l.sources, m.tab) {
 				if t.has(x, y) {
+					if tabsCollapsed(l.sources) {
+						return m.switchTab((i + 1) % tabCount)
+					}
 					return m.switchTab(i)
 				}
 			}

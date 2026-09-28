@@ -21,7 +21,8 @@ func TestLayoutShapes(t *testing.T) {
 		w, h int
 		want shape
 	}{{200, 58, shapeSide}, {100, 58, shapeStack}, {100, 28, shapeStack}, {60, 24, shapeStack}, {159, 40, shapeStack},
-		{280, 58, shapeSide}, {50, 20, shapeMini}, {100, 12, shapeMini}}
+		{280, 58, shapeSide}, {50, 20, shapeStack}, {100, 12, shapeStack}, {30, 10, shapeStack},
+		{29, 20, shapeMini}, {100, 9, shapeMini}}
 	for _, c := range cases {
 		if got := computeLayout(c.w, c.h, layoutState{}).shape; got != c.want {
 			t.Errorf("%dx%d: shape %d, want %d", c.w, c.h, got, c.want)
@@ -174,7 +175,7 @@ func TestMouseTakeoverControlsAndRows(t *testing.T) {
 	if m.focus != focusSources || m.lists[tabSources].sel != 1 {
 		t.Fatalf("row click: focus %d sel %d", m.focus, m.lists[tabSources].sel)
 	}
-	tabs := tabRects(computeLayout(m.w, m.h, m.ls()).sources)
+	tabs := tabRects(computeLayout(m.w, m.h, m.ls()).sources, m.tab)
 	if m = click(m, tabs[tabHistory].x+1, tabs[tabHistory].y); m.tab != tabHistory {
 		t.Errorf("tab click → %d", m.tab)
 	}
@@ -636,5 +637,27 @@ func TestSpectrumStaysPlayerHeight(t *testing.T) {
 	}
 	if m = key(m, "v"); m.ls().compact {
 		t.Errorf("%s is still drawn small", m.modeName())
+	}
+}
+
+// A narrow list shows only the active tab as ‹ name ›, and clicking it moves
+// to the next tab.
+func TestNarrowListCollapsesTabs(t *testing.T) {
+	m := testModel(t)
+	m = upd(m, tea.WindowSizeMsg{Width: 32, Height: 20})
+	src := m.layout().sources
+	if !tabsCollapsed(src) {
+		t.Fatalf("tabs not collapsed at width %d", src.w)
+	}
+	tr := tabRects(src, m.tab)
+	if !tr[(m.tab+1)%tabCount].empty() {
+		t.Error("an inactive tab still has a click target")
+	}
+	was := m.tab
+	if m = click(m, tr[was].x+1, tr[was].y); m.tab != (was+1)%tabCount {
+		t.Errorf("click on ‹ %s › left tab %d", tabNames[was], m.tab)
+	}
+	if wide := computeLayout(100, 40, m.ls()).sources; tabsCollapsed(wide) {
+		t.Error("tabs collapsed at 100 columns")
 	}
 }

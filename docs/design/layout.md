@@ -10,10 +10,17 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
 - Side-by-side when `cols >= 160` and `cols >= 2.5 * rows` (ultrawide 280×58, laptop fullscreen 200×58 → side;
   100×58, 100×28 → stacked; was `cols >= 4.5 * rows` until 2026-09-26, which kept 200×58 stacked): left column
   (min(100, 40% of cols)) = player, EQ, sources; visualizer takes the right, full height.
-- Below ~60×24 (current XS): title line, time line, visualizer. Sources appear only when focused, full screen.
+- Below 30 columns or 10 rows (`miniCols`, `miniRows`): title line, time line, visualizer. Sources appear only
+  when focused, full screen. Was 60×16 until 2026-09-27 (issue #5), a cliff that dropped the whole UI one column
+  below 60.
+- Between that and full size, panels shed detail instead of disappearing: the list's tabs collapse to the active
+  one as `‹ name ›` (click for the next) when the panel is under ~39 + 10 columns (`tabsCollapsed`); source rows
+  drop their right-hand hint under 40 columns; the transport shortens to `► ‖ ■` under 30; with no room for the
+  meter, volume sits beside the transport; title and source lines scroll (marquee) rather than truncate.
 
 ## Heights (stacked)
-- Player 6 rows (5 when rows < 30). EQ panel 10 rows (7 when rows < 30), only while open; it takes rows from
+- Player 6 rows (5 when rows < 30, 4 — title and time — when rows < 20, `shortRows`; the list's minimum drops to 3
+  there). When the visualizer can't get 3 rows beside the list's minimum it is dropped, never the list. EQ panel 10 rows (7 when rows < 30), only while open; it takes rows from
   the visualizer.
 - Remaining rows split 60/40 visualizer/sources. While sources has focus, visualizer drops to 25% (min 3 rows)
   and reverts when focus leaves. Sources minimum 8 rows (5 when rows < 30).
