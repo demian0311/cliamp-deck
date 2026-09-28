@@ -28,22 +28,26 @@ const (
 	cSel
 	cKey
 	cFocus
+	cBold
+	cGreenBold
 	cRGB // the cell's own 24-bit colour, from grid.fg (theme ramps)
 )
 
 var styles = map[cls]lipgloss.Style{
-	cGreen:   lipgloss.NewStyle().Foreground(lipgloss.Color("2")),
-	cYellow:  lipgloss.NewStyle().Foreground(lipgloss.Color("3")),
-	cAmber:   lipgloss.NewStyle().Foreground(lipgloss.Color("11")),
-	cRed:     lipgloss.NewStyle().Foreground(lipgloss.Color("1")),
-	cCyan:    lipgloss.NewStyle().Foreground(lipgloss.Color("6")),
-	cMagenta: lipgloss.NewStyle().Foreground(lipgloss.Color("5")),
-	cDim:     lipgloss.NewStyle().Foreground(lipgloss.Color("8")),
-	cWhite:   lipgloss.NewStyle().Foreground(lipgloss.Color("15")),
-	cTitle:   lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Bold(true),
-	cSel:     lipgloss.NewStyle().Reverse(true),
-	cKey:     lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true),
-	cFocus:   lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true),
+	cGreen:     lipgloss.NewStyle().Foreground(lipgloss.Color("2")),
+	cYellow:    lipgloss.NewStyle().Foreground(lipgloss.Color("3")),
+	cAmber:     lipgloss.NewStyle().Foreground(lipgloss.Color("11")),
+	cRed:       lipgloss.NewStyle().Foreground(lipgloss.Color("1")),
+	cCyan:      lipgloss.NewStyle().Foreground(lipgloss.Color("6")),
+	cMagenta:   lipgloss.NewStyle().Foreground(lipgloss.Color("5")),
+	cDim:       lipgloss.NewStyle().Foreground(lipgloss.Color("8")),
+	cWhite:     lipgloss.NewStyle().Foreground(lipgloss.Color("15")),
+	cTitle:     lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Bold(true),
+	cSel:       lipgloss.NewStyle().Reverse(true),
+	cKey:       lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true),
+	cFocus:     lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true),
+	cBold:      lipgloss.NewStyle().Bold(true),
+	cGreenBold: lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true),
 }
 
 // grid is a fixed-size cell buffer. Panels draw into it by coordinate, which

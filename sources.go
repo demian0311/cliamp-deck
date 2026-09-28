@@ -47,6 +47,7 @@ type row struct {
 	live          bool // a track of cliamp's live playlist
 	current       bool // what is playing now
 	color         cls  // the label's colour when not selected or playing; cNone = default
+	byline        int  // runes at the label's end naming the artist, drawn faded
 }
 
 type listState struct {
@@ -393,7 +394,14 @@ func stripFormat(name string) string {
 }
 
 func trackRow(t ipc.TrackInfo, right string) row {
-	return row{kind: rowTrack, label: trackTitle(t.Artist, t.Title), right: right, track: &t}
+	r := row{kind: rowTrack, right: right, track: &t}
+	title, artist := trackParts(t.Artist, t.Title)
+	r.label = title
+	if artist != "" {
+		by := " · " + artist
+		r.label, r.byline = title+by, len([]rune(by))
+	}
+	return r
 }
 
 // playlistTracks are an open playlist's rows. Live rows are cliamp's own

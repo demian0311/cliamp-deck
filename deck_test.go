@@ -960,3 +960,39 @@ func TestTwoTabs(t *testing.T) {
 		t.Fatalf("sources click → %d", m.tab)
 	}
 }
+
+// A track row leads with its title in bold and fades the artist after it; the
+// row keeps its own colour when it has no bold form (a queued, cyan row).
+func TestTrackRowTitleFirst(t *testing.T) {
+	m := testModel(t)
+	m.lists[tabSources].rows = playlistTracks([]ipc.TrackInfo{
+		{Title: "Heroes", Artist: "David Bowie"},
+		{Title: "Computer Love", Artist: "Kraftwerk", QueuePosition: 1},
+		{Title: "Untitled"},
+	}, true)
+	g := newGrid(m.w, m.h)
+	l := m.layout()
+	m.drawSources(g, l.sources)
+	find := func(s string) (int, int) {
+		for y := range g.h {
+			line := string(g.ch[y*g.w : (y+1)*g.w])
+			if i := strings.Index(line, s); i >= 0 {
+				return len([]rune(line[:i])), y
+			}
+		}
+		t.Fatalf("%q not drawn", s)
+		return 0, 0
+	}
+	at := func(x, y int) cls { return g.cl[y*g.w+x] }
+	x, y := find("Heroes · David Bowie")
+	if at(x, y) != cBold || at(x+len("Heroes · "), y) != cDim {
+		t.Errorf("Heroes row: title %v, artist %v", at(x, y), at(x+len("Heroes · "), y))
+	}
+	x, y = find("Computer Love · Kraftwerk")
+	if at(x, y) != cCyan || at(x+len("Computer Love · "), y) != cDim {
+		t.Errorf("queued row: title %v, artist %v", at(x, y), at(x+len("Computer Love · "), y))
+	}
+	if x, y = find("Untitled"); at(x, y) != cBold {
+		t.Errorf("artistless row painted %v", at(x, y))
+	}
+}

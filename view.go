@@ -445,6 +445,16 @@ func (m model) drawSources(g *grid, r rect) {
 			c = cWhite
 		}
 		g.put(rows.x, y, line, c)
+		if it.kind == rowTrack { // the title stands out, any artist after it fades
+			at, shown := 1+len([]rune(mark)), min(len([]rune(left)), width)
+			title := len([]rune(it.label)) - it.byline
+			bold, ok := bolder[c]
+			if !ok {
+				bold = c // no bold form: keep the row's colour
+			}
+			g.paint(rows.x+at, y, min(title, shown-at), bold)
+			g.paint(rows.x+at+title, y, shown-at-title, cDim)
+		}
 		if spin {
 			g.paint(rows.x+1, y, 1, cYellow)
 		}
@@ -523,13 +533,22 @@ func (m model) trackText() (title, source string) {
 	return title, source
 }
 
-// trackTitle joins artist and title for display. Some stations send stream
-// metadata as "Artist - Artist - Title"; cliamp splits at the first " - ", so
-// the title arrives still carrying the artist. Drop that repeat.
+// trackTitle joins artist and title for display, artist first.
 func trackTitle(artist, title string) string {
+	if title, artist = trackParts(artist, title); artist == "" {
+		return title
+	}
+	return artist + " — " + title
+}
+
+// trackParts tidies a track's title and artist for display. Some stations send
+// stream metadata as "Artist - Artist - Title"; cliamp splits at the first
+// " - ", so the title arrives still carrying the artist. Drop that repeat. An
+// artist with no title of its own comes back as the title.
+func trackParts(artist, title string) (string, string) {
 	artist = strings.TrimSpace(artist)
 	if artist == "" {
-		return title
+		return title, ""
 	}
 	for _, sep := range []string{" - ", " – ", " — "} {
 		if len(title) > len(artist)+len(sep) && strings.EqualFold(title[:len(artist)], artist) &&
@@ -539,10 +558,13 @@ func trackTitle(artist, title string) string {
 		}
 	}
 	if strings.EqualFold(strings.TrimSpace(title), artist) {
-		return artist
+		return artist, ""
 	}
-	return artist + " — " + title
+	return title, artist
 }
+
+// bolder is the bold form of a list row's colour, for a track's title.
+var bolder = map[cls]cls{cNone: cBold, cWhite: cTitle, cGreen: cGreenBold}
 
 func (m model) stateGlyph() (string, cls) {
 	switch m.snap.State {
