@@ -270,13 +270,12 @@ func (e *Moire) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	}
 }
 
-// Braille: the whole pane is braille, and theme colours flow through it as
-// slow currents. How many of a cell's eight dots are lit is how loud its
-// part of the spectrum is, bass on the left, so the page thickens and thins
-// with the music; each dot has a fixed threshold, so a rising level fills
-// cells dot by dot instead of flickering. Loudness brightens the colours,
-// bass hurries the currents, and a beat flashes the page and nudges the hues
-// along.
+// Braille: the whole pane is full braille cells, every dot lit, with theme
+// colours flowing through them as slow currents, several hues at once.
+// Loudness brightens the page, bass hurries the currents, mids stretch
+// them, and a beat flashes the page and nudges the hues along. Every cell
+// keeps all eight dots so the field stays even; the music is carried by
+// colour alone.
 type Braille struct {
 	hue, drift float64
 	cells      Cells // Render's pixel fallback draws through this
@@ -284,52 +283,22 @@ type Braille struct {
 
 func (*Braille) Name() string { return "braille" }
 
-// bayer4 is the 4×4 ordered-dither matrix as thresholds in 0..1: lighting
-// dots in this order keeps any density evenly spread.
-var bayer4 = [4][4]float64{
-	{0.5 / 16, 8.5 / 16, 2.5 / 16, 10.5 / 16},
-	{12.5 / 16, 4.5 / 16, 14.5 / 16, 6.5 / 16},
-	{3.5 / 16, 11.5 / 16, 1.5 / 16, 9.5 / 16},
-	{15.5 / 16, 7.5 / 16, 13.5 / 16, 5.5 / 16},
-}
-
-const brailleFloor = 0.45 // share of dots lit in silence, so the page never thins to patches
-
 func (e *Braille) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
-	W := float64(c.W * 2) // dot columns
 	if c.W == 0 || c.H == 0 {
 		return
 	}
 	e.hue += dt/metaballLap + a.Beat*dt*0.2
 	e.drift += dt * (0.15 + 0.5*a.Bass)
-
 	hues := th.Gradient(append(metaballHues, metaballHues[0])...)
-	lum := 0.35 + 0.65*(a.Bass+a.Mid+a.Treble)/3
-	bits := [4][2]rune{{0x01, 0x08}, {0x02, 0x10}, {0x04, 0x20}, {0x40, 0x80}}
+	lum := 0.55 + 0.45*(a.Bass+a.Mid+a.Treble)/3
+	stretch := 1 - 0.3*a.Mid
 	for cy := range c.H {
 		for cx := range c.W {
-			var ch rune
-			level := 0.0
-			for r := range 4 {
-				for s := range 2 {
-					x, y := float64(cx*2+s), float64(cy*4+r)
-					v := math.Sqrt(bandAt(a, x/W)) * (0.8 + 0.4*fbm(x*0.04-e.drift, y*0.05+e.drift*0.5))
-					v = brailleFloor + (1-brailleFloor)*clamp01(v)
-					if bayer4[r][(cx*2+s)%4] < v { // ordered, so dots spread evenly instead of clumping
-						ch |= bits[r][s]
-					}
-					level += v / 8
-				}
-			}
-			i := cy*c.W + cx
-			if ch == 0 {
-				c.Ch[i] = 0
-				continue
-			}
 			fx, fy := float64(cx), float64(cy)
-			p := e.hue + 2.2*fbm(fx*0.03+e.drift*0.7, fy*0.07-e.drift*0.4) // several hues at once, in drifting bands
-			col := lerp(th.Stage, hues.At(frac(p)), 0.75+0.25*clamp01(level*lum*1.6))
-			c.Ch[i], c.Fg[i] = 0x2800+ch, th.Glow(col, a.Beat*0.3)
+			p := e.hue + 2.2*fbm(fx*0.03*stretch+e.drift*0.7, fy*0.07*stretch-e.drift*0.4) // several hues at once, in drifting bands
+			col := lerp(th.Stage, hues.At(frac(p)), lum)
+			i := cy*c.W + cx
+			c.Ch[i], c.Fg[i] = 0x28FF, th.Glow(col, a.Beat*0.3)
 		}
 	}
 }

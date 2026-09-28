@@ -28,8 +28,8 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
   read.
   Coral (Gray–Scott), flow (particle field), life (Conway) and moire (two ring sets in theme hues) are in
   `fx/growth.go`. Picked from a browser mockup; radar was dropped there.
-  Braille (a full pane of braille whose dot density follows the bands, lit in 4×4 ordered-dither order so
-  density never clumps, theme hues drifting through it) is a
+  Braille (a full pane of ⣿ cells, every dot lit, theme hues drifting through it; the music moves only
+  colour, since density that followed the bands left unlit dots that read as holes and bands) is a
   `fx.GlyphEffect` in `fx/growth.go`.
   2026-09-26: the braille spectrum was removed, then aurora, ripples, rain and warp were replaced by Winamp-era
   effects — vortex (Geiss/MilkDrop feedback), water (AVS Water Bump), fountain (AVS Dot Fountain), spectrum
