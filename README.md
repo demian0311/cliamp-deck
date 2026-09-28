@@ -24,8 +24,8 @@ theme's colours. All audio, providers and the spectrum come from a running cliam
 3. **Visualizer**: `v` or the `‹ n/N ›` arrows cycle the effects; click it or press Enter to take over the whole
    terminal. Spectrum, the default, stays as short as the player and stands in for its level meter, leaving the
    room to the list.
-4. **Sources**: cliamp's sources (radio by country, plus anything else you have set up), with **queue** and
-   **history** tabs.
+4. **Sources**: cliamp's sources (radio by country, plus anything else you have set up), down to each playlist's
+   tracks, with a **now playing** shortcut at the top and a **history** tab.
 5. **Status line**: the keys for whichever panel has focus (Tab moves focus), and whether cliamp is connected.
 
 A wide terminal puts the visualizer beside the other panels (above). A narrower or taller one stacks them
@@ -113,7 +113,7 @@ Keys: space play/pause · n/p skip · , . seek · +/- volume · Tab focus player
 in the player: ↑/↓ volume, ←/→ seek · e shows or hides the EQ from anywhere (←/→ band, ↑/↓ gain, p preset, 0 off) ·
 v or ‹ › cycle visualizers (←/→ when it has focus) · V take over · { } move the picture 10 ms earlier/later
 against the sound (Bluetooth adds its own delay) ·
-in sources: ↑/↓ move, → open a source or country, ← back (Radio lists countries; open one for its stations), Enter play, a add to queue, A play next, [ ] tabs (sources/queue/history), / search,
+in sources: ↑/↓ move, → open a source, country or playlist, ← back (Radio lists countries; open one for its stations), Enter play (a playlist also opens), a add to queue, A play next, [ ] tabs (sources/history), / search,
 s set up a source with `cliamp setup` · q quit. Mouse: click and double-click rows, scroll the list, click tabs.
 
 The deck remembers your EQ, visualizer, sync delay and last station or track in `~/.config/cliamp-deck/state.toml` (cliamp's

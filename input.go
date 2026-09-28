@@ -111,6 +111,10 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 	case focusSources:
 		l := &m.lists[m.tab]
 		switch k {
+		case "down", "j", "up", "k", "pgdown", "pgup", "home", "end":
+			m.follow = false // moved by hand: stop following the playing track
+		}
+		switch k {
 		case "down", "j":
 			l.move(1)
 			return m.moreIfAtEnd()
@@ -124,12 +128,17 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 			l.move(-10)
 			return m, nil
 		case "right", "l":
-			if r, ok := m.selected(); ok && (r.kind == rowProvider || r.kind == rowCountry) {
+			r, ok := m.selected()
+			switch {
+			case ok && (r.kind == rowProvider || r.kind == rowCountry || r.kind == rowNowPlaying):
 				return m.activate()
+			case ok && r.kind == rowPlaylist && !isStation(r.key) && !m.loading:
+				m.openPlaylist(r.provider, m.providerName, r.key, r.label)
+				return m, m.refreshRows()
 			}
 			return m, nil
 		case "left", "h":
-			if m.tab == tabSources && (m.inResults || m.provider != "") {
+			if m.tab == tabSources && (m.inResults || m.provider != "" || m.nowPlaying) {
 				return m.back()
 			}
 			return m, nil
@@ -234,13 +243,7 @@ func (m model) searchKey(k string) (tea.Model, tea.Cmd) {
 
 func (m model) switchTab(t int) (tea.Model, tea.Cmd) {
 	m.tab, m.focus = t, focusSources
-	switch t {
-	case tabQueue:
-		if m.snap != nil {
-			m.queueRev = m.snap.PlaylistRevision
-		}
-		return m, fetchQueue(m.c)
-	case tabHistory:
+	if t == tabHistory {
 		return m, fetchHistory(m.c)
 	}
 	return m, nil
@@ -270,11 +273,31 @@ func (m model) activate() (tea.Model, tea.Cmd) {
 		m.pending = &pendingRow{tab: m.tab, key: r.key, playlist: r.provider + ":" + r.key, since: time.Now()}
 		m.say("loading " + r.label + "…")
 		m.rememberPlaylist(r.provider, r.key, r.label)
-		return m, m.run("playing "+r.label, "provider.load", map[string]string{"provider": r.provider, "playlist": r.key})
+		load := m.run("playing "+r.label, "provider.load", map[string]string{"provider": r.provider, "playlist": r.key})
+		if isStation(r.key) {
+			return m, load
+		}
+		m.openPlaylist(r.provider, m.providerName, r.key, r.label) // plays from the top, shown from inside
+		return m, tea.Batch(load, m.refreshRows())
+	case rowNowPlaying:
+		if provider, playlist, ok := m.loadedPlaylist(); ok {
+			name, _ := m.nowPlayingName()
+			m.openPlaylist(provider, m.providerNamed(provider), playlist, name)
+		} else {
+			m.openNowPlaying()
+		}
+		return m, m.refreshRows()
 	case rowTrack:
 		m.pending = &pendingRow{tab: m.tab, path: r.track.Path, since: time.Now()}
-		if m.tab == tabQueue {
+		switch {
+		case r.live:
 			return m, m.run("playing "+r.label, "queue.play", map[string]int{"index": r.index})
+		case m.tab == tabSources && m.playlist != "" && !m.inResults:
+			// Not loaded yet: load the playlist, then move to the track. The
+			// selection stays on it as the rows turn into cliamp's.
+			m.follow = false
+			m.rememberPlaylist(m.provider, m.playlist, m.playlistName)
+			return m, playInPlaylist(m.c, m.provider, m.playlist, r.track.Path, r.label, 0)
 		}
 		m.rememberPlaylist("", "", "") // a lone track or station: resume plays just it
 		return m, m.run("playing "+r.label, "track.play", map[string]*ipc.TrackInfo{"track": r.track})
@@ -293,11 +316,11 @@ func (m model) activate() (tea.Model, tea.Cmd) {
 func (m model) enqueue(next bool) (tea.Model, tea.Cmd) {
 	r, ok := m.selected()
 	if !ok || r.kind != rowTrack {
-		m.say("a and A work on tracks: search with / or open queue or history")
+		m.say("a and A work on tracks: open a playlist, search with / or open history")
 		return m, nil
 	}
 	switch {
-	case next && m.tab == tabQueue:
+	case next && r.live:
 		return m, m.run("next up: "+r.label, "queue.enqueue", map[string]int{"index": r.index})
 	case next:
 		return m, m.run("next up: "+r.label, "track.queue", map[string]*ipc.TrackInfo{"track": r.track})
@@ -316,10 +339,31 @@ func (m model) back() (tea.Model, tea.Cmd) {
 	switch {
 	case m.inResults:
 		m.inResults, m.query = false, ""
+		if m.inPlaylist() {
+			m.enterLevel()
+			return m, m.refreshRows()
+		}
 		if m.provider != "" {
 			return m.reopenProvider()
 		}
 		m.lists[tabSources] = listState{rows: m.topRows()}
+	case m.tab == tabSources && m.nowPlaying:
+		m.nowPlaying, m.rowsKey, m.loading = false, "", false
+		m.lists[tabSources] = listState{rows: m.topRows()}
+		m.lists[tabSources].sel = firstSelectable(m.lists[tabSources].rows) // the now-playing row
+	case m.tab == tabSources && m.playlist != "":
+		key := m.playlist
+		m.playlist, m.playlistName, m.rowsKey, m.loading = "", "", "", false
+		if m.stationsOf != m.provider { // opened by resume or now playing: list it first
+			m.reselect = key
+			return m.reopenProvider()
+		}
+		m.lists[tabSources] = listState{rows: m.playlistRows(m.provider, m.stations)}
+		for i, r := range m.lists[tabSources].rows {
+			if r.key == key {
+				m.lists[tabSources].sel = i
+			}
+		}
 	case m.tab == tabSources && m.inCountry:
 		m.inCountry = false
 		m.lists[tabSources] = listState{rows: m.playlistRows(m.provider, m.stations)}
@@ -333,7 +377,7 @@ func (m model) back() (tea.Model, tea.Cmd) {
 		m.provider, m.providerName = "", ""
 		m.lists[tabSources] = listState{rows: m.topRows()}
 		for i, r := range m.lists[tabSources].rows {
-			if r.key == key {
+			if r.kind == rowProvider && r.key == key {
 				m.lists[tabSources].sel = i
 			}
 		}
@@ -385,7 +429,7 @@ func (m model) openProvider(key, name string, more bool) tea.Cmd {
 // moreIfAtEnd fetches the next catalog page once the selection hits the last row.
 func (m model) moreIfAtEnd() (tea.Model, tea.Cmd) {
 	l := m.lists[tabSources]
-	if m.tab != tabSources || !m.catalog || m.loading || m.inResults || l.sel < len(l.rows)-1 {
+	if m.tab != tabSources || !m.catalog || m.loading || m.inResults || m.inPlaylist() || l.sel < len(l.rows)-1 {
 		return m, nil
 	}
 	m.loading = true
@@ -480,6 +524,7 @@ func (m model) click(ev tea.Mouse) (tea.Model, tea.Cmd) {
 		if i >= len(list.rows) {
 			return m, nil
 		}
+		m.follow = false
 		now := time.Now()
 		double := wasFocused && i == m.lastClickRow && now.Sub(m.lastClick) < doubleClick
 		list.sel, m.lastClick, m.lastClickRow = i, now, i
@@ -510,7 +555,7 @@ func (m model) wheel(ev tea.Mouse) (tea.Model, tea.Cmd) {
 	if m.take || !l.sources.has(ev.X, ev.Y) {
 		return m, nil
 	}
-	m.focus = focusSources
+	m.focus, m.follow = focusSources, false
 	switch ev.Button {
 	case tea.MouseWheelDown:
 		m.lists[m.tab].move(3)

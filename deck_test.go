@@ -750,3 +750,208 @@ func TestShuffleSurvivesARestart(t *testing.T) {
 		t.Fatal("turning shuffle off was not saved")
 	}
 }
+
+// spotifyModel is testModel with Spotify's playlists open in the sources tab.
+func spotifyModel(t *testing.T) model {
+	t.Helper()
+	m := testModel(t)
+	m.focus = focusSources
+	m.providers = append(m.providers, ipc.ProviderInfo{Key: "spotify", Name: "Spotify"})
+	return upd(m, playlistsMsg{provider: "spotify", name: "Spotify", list: []ipc.PlaylistInfo{
+		{ID: "pl1", Name: "Road Trip"}, {ID: "pl2", Name: "Focus"}}})
+}
+
+func trackPaths(m model) string {
+	var got []string
+	for _, r := range m.lists[tabSources].rows {
+		got = append(got, r.track.Path)
+	}
+	return strings.Join(got, ",")
+}
+
+// → on a playlist goes inside it without loading it; ← comes back to the
+// playlists with it still selected.
+func TestPlaylistGoInsideAndBack(t *testing.T) {
+	m := spotifyModel(t)
+	m = key(m, "down")
+	next, cmd := m.key("right")
+	m = next.(model)
+	if m.playlist != "pl2" || m.playlistName != "Focus" || cmd == nil {
+		t.Fatalf("inside %q (%q), cmd %v", m.playlist, m.playlistName, cmd != nil)
+	}
+	if m.rowsKey != "spotify:pl2 tracks" {
+		t.Fatalf("rows from %q, want the provider's tracks", m.rowsKey)
+	}
+	m = upd(m, tracksMsg{key: m.rowsKey, tracks: []ipc.TrackInfo{{Path: "a", Title: "A"}, {Path: "b", Title: "B"}}})
+	if got := trackPaths(m); got != "a,b" || m.loading {
+		t.Fatalf("rows %s, loading %v", got, m.loading)
+	}
+	if got := stripANSI(m.render()); !strings.Contains(got, "Spotify › Focus") {
+		t.Error("the header does not say which playlist is open")
+	}
+	m = key(m, "left")
+	if r, _ := m.selected(); m.playlist != "" || m.provider != "spotify" || r.key != "pl2" {
+		t.Fatalf("back landed on %q (inside %q)", r.key, m.playlist)
+	}
+	m = upd(m, tracksMsg{key: "spotify:pl2 tracks", tracks: []ipc.TrackInfo{{Path: "a"}}})
+	if r, _ := m.selected(); r.kind != rowPlaylist {
+		t.Error("a late track list replaced the playlists")
+	}
+	// A station has nothing inside.
+	m = upd(m, playlistsMsg{provider: "radio", name: "Radio", list: []ipc.PlaylistInfo{{ID: "f:x", Name: "Hit FM"}}})
+	if m = key(m, "right"); m.playlist != "" {
+		t.Error("→ went inside a station")
+	}
+}
+
+// Enter on a playlist loads it and goes inside; a station just plays.
+func TestEnterOnAPlaylistGoesInside(t *testing.T) {
+	m := spotifyModel(t)
+	next, cmd := m.key("enter")
+	m = next.(model)
+	if m.playlist != "pl1" || cmd == nil || m.saved.LastPlaylist != "pl1" {
+		t.Fatalf("inside %q, remembered %q", m.playlist, m.saved.LastPlaylist)
+	}
+	m = testModel(t)
+	m.focus = focusSources
+	m = upd(m, playlistsMsg{provider: "radio", name: "Radio", list: []ipc.PlaylistInfo{{ID: "l:0", Name: "cliamp radio"}}})
+	if m = key(m, "enter"); m.playlist != "" || m.pending == nil {
+		t.Fatalf("Enter on a station went inside %q", m.playlist)
+	}
+}
+
+// Inside the playlist cliamp has loaded, the rows are cliamp's live playlist:
+// the playing track marked, play-next tracks tagged, and the mark following
+// the playing track without a refetch.
+func TestLoadedPlaylistShowsTheLiveQueue(t *testing.T) {
+	m := spotifyModel(t)
+	m.snap.Playlist, m.snap.Index, m.snap.PlaylistRevision = "spotify:pl1", 1, 7
+	m = key(m, "right")
+	if m.rowsKey != "spotify:pl1 queue@7" {
+		t.Fatalf("rows from %q, want the live playlist", m.rowsKey)
+	}
+	m = upd(m, tracksMsg{key: m.rowsKey, live: true, tracks: []ipc.TrackInfo{
+		{Path: "a", DurationSecs: 60}, {Path: "b"}, {Path: "c", DurationSecs: 90, QueuePosition: 1}}})
+	rows := m.lists[tabSources].rows
+	if !rows[1].current || rows[0].current || !rows[2].live || rows[2].index != 2 {
+		t.Fatalf("rows %+v", rows)
+	}
+	if rows[2].right != "+1 01:30" || rows[2].color != cCyan || rows[0].right != "01:00" {
+		t.Errorf("play-next tag %q / %q", rows[2].right, rows[0].right)
+	}
+	if m.lists[tabSources].sel != 1 {
+		t.Errorf("selection %d, not on the playing track", m.lists[tabSources].sel)
+	}
+	snap := *m.snap
+	snap.Index = 2
+	next, cmd := m.Update(stateMsg{&snap})
+	m = next.(model)
+	rows = m.lists[tabSources].rows
+	if !rows[2].current || rows[1].current || m.lists[tabSources].sel != 2 {
+		t.Fatal("the » did not follow the playing track")
+	}
+	if cmd == nil || m.rowsKey != "spotify:pl1 queue@7" {
+		t.Errorf("refetched on the same revision: %q", m.rowsKey)
+	}
+	m = key(m, "up") // moved by hand: the selection stays put from here
+	snap.Index = 0
+	m = upd(m, stateMsg{&snap})
+	if m.lists[tabSources].sel != 1 {
+		t.Error("the selection still follows after being moved")
+	}
+	snap.PlaylistRevision = 8
+	if m = upd(m, stateMsg{&snap}); m.rowsKey != "spotify:pl1 queue@8" {
+		t.Error("a new playlist revision was not refetched")
+	}
+	if _, cmd := m.key("A"); cmd == nil {
+		t.Error("A on a live row did nothing")
+	}
+}
+
+// The top of the sources is a shortcut into what cliamp has loaded.
+func TestNowPlayingShortcut(t *testing.T) {
+	m := spotifyModel(t)
+	m = key(m, "left")
+	if r := m.lists[tabSources].rows[0]; r.kind == rowNowPlaying {
+		t.Fatal("a station got a now-playing row with nothing in the live playlist")
+	}
+	m.snap.Playlist = "spotify:pl2"
+	m = upd(m, stateMsg{m.snap})
+	r := m.lists[tabSources].rows[0]
+	if r.kind != rowNowPlaying || r.label != "now playing › Focus" {
+		t.Fatalf("first row %+v", r)
+	}
+	m.lists[tabSources].sel = 0
+	if m = key(m, "enter"); m.provider != "spotify" || m.playlist != "pl2" || m.providerName != "Spotify" {
+		t.Fatalf("shortcut opened %q › %q", m.providerName, m.playlist)
+	}
+
+	// Not a provider playlist: a now-playing level of the live playlist.
+	m = testModel(t)
+	m.focus = focusSources
+	m.snap.Playlist, m.snap.Total = "", 3
+	m = upd(m, stateMsg{m.snap})
+	if r := m.lists[tabSources].rows[0]; r.label != "now playing › Boards of Canada — Roygbiv" {
+		t.Fatalf("first row %q", r.label)
+	}
+	m.lists[tabSources].sel = 0
+	m = key(m, "right")
+	if !m.nowPlaying || !strings.HasSuffix(m.rowsKey, "queue@0") {
+		t.Fatalf("now playing %v, rows from %q", m.nowPlaying, m.rowsKey)
+	}
+	m = key(m, "left")
+	if r, _ := m.selected(); m.nowPlaying || r.kind != rowNowPlaying {
+		t.Fatalf("back landed on %+v", r)
+	}
+}
+
+// A playlist left open is where the sources list reopens after a restart.
+func TestRestartReopensInsideThePlaylist(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.toml")
+	providers := providersMsg{list: []ipc.ProviderInfo{{Key: "spotify", Name: "Spotify"}}}
+	list := playlistsMsg{provider: "spotify", name: "Spotify", list: []ipc.PlaylistInfo{{ID: "pl1", Name: "Road Trip"}, {ID: "pl2", Name: "Focus"}}}
+
+	m := newModel(client{sock: "/nonexistent"}, "/nonexistent/colors.toml", path)
+	m.focus = focusSources
+	m = upd(upd(m, providers), list)
+	m = key(key(m, "down"), "right")
+	m = key(m, "q")
+	if s := loadState(path); s.SourcePlaylist != "pl2" || s.SourcePlaylistName != "Focus" || s.SourceSelected != "pl2" {
+		t.Fatalf("saved %+v", s)
+	}
+
+	m = newModel(client{sock: "/nonexistent"}, "/nonexistent/colors.toml", path)
+	m = upd(upd(m, providers), list)
+	if m.playlist != "pl2" || m.playlistName != "Focus" || m.rowsKey == "" {
+		t.Fatalf("reopened inside %q (rows from %q)", m.playlist, m.rowsKey)
+	}
+	m.focus = focusSources
+	if m = key(m, "left"); m.playlist != "" {
+		t.Fatal("← did not leave the restored playlist")
+	}
+	if r, _ := m.selected(); r.key != "pl2" {
+		t.Errorf("back landed on %q", r.key)
+	}
+}
+
+// Two tabs, sources and history, cycled by ] and clicked.
+func TestTwoTabs(t *testing.T) {
+	m := testModel(t)
+	if tabCount != 2 || tabNames != [tabCount]string{"sources", "history"} {
+		t.Fatalf("tabs %v", tabNames)
+	}
+	if m = key(m, "]"); m.tab != tabHistory {
+		t.Fatalf("] → tab %d", m.tab)
+	}
+	if m = key(m, "]"); m.tab != tabSources {
+		t.Fatalf("] ] → tab %d", m.tab)
+	}
+	tabs := tabRects(m.layout().sources, m.tab)
+	if m = click(m, tabs[tabHistory].x+1, tabs[tabHistory].y); m.tab != tabHistory {
+		t.Fatalf("history click → %d", m.tab)
+	}
+	tabs = tabRects(m.layout().sources, m.tab)
+	if m = click(m, tabs[tabSources].x+1, tabs[tabSources].y); m.tab != tabSources {
+		t.Fatalf("sources click → %d", m.tab)
+	}
+}

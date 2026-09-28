@@ -372,6 +372,10 @@ func (m model) drawSources(g *grid, r rect) {
 	case m.tab != tabSources:
 	case m.inResults:
 		ctx = "search: " + m.query
+	case m.nowPlaying:
+		ctx = "now playing"
+	case m.playlist != "":
+		ctx = m.providerName + " › " + m.playlistName
 	case m.inCountry:
 		ctx = m.providerName + " › " + countryLabel(m.country)
 	case m.providerName != "":
@@ -401,7 +405,10 @@ func (m model) drawSources(g *grid, r rect) {
 		return
 	}
 	if len(list.rows) == 0 {
-		empty := map[int]string{tabSources: "no sources yet", tabQueue: "queue is empty", tabHistory: "nothing played yet"}[m.tab]
+		empty := map[int]string{tabSources: "no sources yet", tabHistory: "nothing played yet"}[m.tab]
+		if m.tab == tabSources && m.inPlaylist() && !m.inResults {
+			empty = map[bool]string{true: "loading tracks…", false: "no tracks"}[m.loading]
+		}
 		g.put(rows.x+1, rows.y, fit(empty, rows.w-2), cDim)
 		return
 	}

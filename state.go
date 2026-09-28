@@ -21,10 +21,12 @@ type deckState struct {
 	EQBands    []float64 // 10 values in dB; used when EQPreset is "" or "Custom"
 
 	// Where the sources list was left: the open provider, the radio country
-	// open in it (InCountry, since "" is the no-country group), and the
-	// selected row's key.
+	// open in it (InCountry, since "" is the no-country group), the playlist
+	// open in it (ID and name; "" at its list of playlists) and the selected
+	// row's key.
 	Source, SourceCountry, SourceSelected string
 	SourceInCountry                       bool
+	SourcePlaylist, SourcePlaylistName    string
 
 	// LastTrack is what was last playing (a radio station's stream, or a
 	// track), so the deck can start it again when it attaches to an idle
@@ -96,6 +98,10 @@ func loadState(path string) deckState {
 			s.SourceInCountry = v == "true"
 		case "source_selected":
 			s.SourceSelected = unquote(v)
+		case "source_playlist":
+			s.SourcePlaylist = unquote(v)
+		case "source_playlist_name":
+			s.SourcePlaylistName = unquote(v)
 		case "last_provider":
 			s.LastProvider = unquote(v)
 		case "last_playlist":
@@ -142,10 +148,11 @@ func saveState(path string, s deckState) error {
 		last = string(b)
 	}
 	body := fmt.Sprintf("# cliamp-deck state, rewritten by the deck\nvisualizer = %q\neq_preset = %q\neq_bands = [%s]\n"+
-		"source = %q\nsource_country = %q\nsource_in_country = %t\nsource_selected = %q\nlast_track = %q\n"+
+		"source = %q\nsource_country = %q\nsource_in_country = %t\nsource_selected = %q\n"+
+		"source_playlist = %q\nsource_playlist_name = %q\nlast_track = %q\n"+
 		"last_provider = %q\nlast_playlist = %q\nlast_playlist_name = %q\nlast_position = %s\nshuffle = %t\nsync_ms = %d\n",
 		s.Visualizer, s.EQPreset, strings.Join(bands, ", "),
-		s.Source, s.SourceCountry, s.SourceInCountry, s.SourceSelected, last,
+		s.Source, s.SourceCountry, s.SourceInCountry, s.SourceSelected, s.SourcePlaylist, s.SourcePlaylistName, last,
 		s.LastProvider, s.LastPlaylist, s.LastPlaylistName, strconv.FormatFloat(s.LastPosition, 'f', 1, 64), s.Shuffle, s.SyncMs)
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(body), 0o644); err != nil {

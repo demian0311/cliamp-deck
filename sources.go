@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"encoding/json"
+	"maps"
 	"regexp"
 	"slices"
 	"strconv"
@@ -14,26 +15,27 @@ import (
 	"github.com/bjarneo/cliamp/ipc"
 )
 
-// The list area has three tabs. "sources" drills providers → playlists and
-// also holds search results; queue and history are cliamp's own lists.
+// The list area has two tabs. "sources" drills providers → playlists → a
+// playlist's tracks (cliamp's live playlist, once it is the one loaded) and
+// also holds search results; history is cliamp's own list.
 const (
 	tabSources = iota
-	tabQueue
 	tabHistory
 	tabCount
 )
 
-var tabNames = [tabCount]string{"sources", "queue", "history"}
+var tabNames = [tabCount]string{"sources", "history"}
 
 type rowKind int
 
 const (
-	rowProvider rowKind = iota // a configured source; Enter opens it
-	rowPlaylist                // a playlist or station; Enter loads it
-	rowTrack                   // a single track; Enter plays, a appends, A plays next
-	rowHeader                  // a group label, not selectable for actions
-	rowSetup                   // a source cliamp can set up; s or Enter runs cliamp setup
-	rowCountry                 // a country of radio stations; Enter or → opens it
+	rowProvider   rowKind = iota // a configured source; Enter opens it
+	rowPlaylist                  // a playlist or station; Enter loads it, → goes inside a playlist
+	rowTrack                     // a single track; Enter plays, a appends, A plays next
+	rowHeader                    // a group label, not selectable for actions
+	rowSetup                     // a source cliamp can set up; s or Enter runs cliamp setup
+	rowCountry                   // a country of radio stations; Enter or → opens it
+	rowNowPlaying                // what cliamp has loaded; Enter or → opens it
 )
 
 type row struct {
@@ -41,7 +43,8 @@ type row struct {
 	label, right  string
 	key, provider string
 	track         *ipc.TrackInfo
-	index         int  // position in cliamp's live playlist (queue tab)
+	index         int  // position in cliamp's live playlist, when live
+	live          bool // a track of cliamp's live playlist
 	current       bool // what is playing now
 	color         cls  // the label's colour when not selected or playing; cNone = default
 }
@@ -82,8 +85,12 @@ func listStart(n, sel, rows int) int {
 }
 
 type (
-	queueMsg struct {
+	// tracksMsg is an open playlist's rows: its tracks, or cliamp's live
+	// playlist (live) once it is the one loaded. key is the fetch it answers.
+	tracksMsg struct {
+		key    string
 		tracks []ipc.TrackInfo
+		live   bool
 		err    error
 	}
 	historyMsg struct {
@@ -111,10 +118,21 @@ func (c client) response(op string, params any) (ipc.Response, error) {
 	return r, err
 }
 
-func fetchQueue(c client) tea.Cmd {
-	return func() tea.Msg {
-		r, err := c.response("queue.list", map[string]int{"limit": 200})
-		return queueMsg{r.Tracks, err}
+// allTracks reads a paged track list (queue.list, provider.tracks) to its end.
+func allTracks(c client, op string, params map[string]any) ([]ipc.TrackInfo, error) {
+	const page = 200
+	var out []ipc.TrackInfo
+	for {
+		p := map[string]any{"offset": len(out), "limit": page}
+		maps.Copy(p, params)
+		r, err := c.response(op, p)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r.Tracks...)
+		if len(r.Tracks) < page || (r.Total > 0 && len(out) >= r.Total) {
+			return out, nil
+		}
 	}
 }
 
@@ -146,6 +164,9 @@ func search(c client, query string, providers []ipc.ProviderInfo) tea.Cmd {
 
 func (m *model) topRows() []row {
 	var rows []row
+	if name, ok := m.nowPlayingName(); ok {
+		rows = append(rows, row{kind: rowNowPlaying, label: "now playing › " + name, color: cGreen})
+	}
 	configured := map[string]bool{}
 	for _, p := range m.providers {
 		configured[p.Key] = true
@@ -221,6 +242,51 @@ func (m *model) playlistRows(provider string, list []ipc.PlaylistInfo) []row {
 			key: countryKey + c, provider: provider, current: playing, color: cYellow})
 	}
 	return rows
+}
+
+// isStation reports a radio station ID (local, catalog, favorite or search):
+// one stream, so there are no tracks to go inside to.
+func isStation(id string) bool {
+	prefix, _, ok := strings.Cut(id, ":")
+	return ok && (prefix == "l" || prefix == "c" || prefix == "f" || prefix == "s")
+}
+
+// loadedPlaylist is the provider playlist cliamp has loaded, when it is one
+// with tracks rather than a station.
+func (m *model) loadedPlaylist() (provider, playlist string, ok bool) {
+	if m.snap == nil {
+		return "", "", false
+	}
+	provider, playlist, _ = strings.Cut(m.snap.Playlist, ":")
+	return provider, playlist, playlist != "" && !isStation(playlist)
+}
+
+// nowPlayingName names what cliamp has loaded, for the now-playing row: the
+// provider playlist, else the track or station. ok is false when nothing is.
+func (m *model) nowPlayingName() (string, bool) {
+	if provider, playlist, ok := m.loadedPlaylist(); ok {
+		s := m.saved
+		switch {
+		case m.provider == provider && m.playlist == playlist && m.playlistName != "":
+			return m.playlistName, true
+		case s.LastProvider == provider && s.LastPlaylist == playlist && s.LastPlaylistName != "":
+			return s.LastPlaylistName, true
+		case m.stationsOf == provider:
+			for _, p := range m.stations {
+				if p.ID == playlist {
+					return p.Name, true
+				}
+			}
+		}
+		return playlist, true
+	}
+	if m.snap == nil || m.snap.Total == 0 {
+		return "", false
+	}
+	if t := m.snap.Track; t != nil {
+		return cmp.Or(t.Station, trackTitle(t.Artist, t.Title), t.Path), true
+	}
+	return "queue", true
 }
 
 // countryKey prefixes a country row's key so it never matches a playlist ID.
@@ -330,12 +396,18 @@ func trackRow(t ipc.TrackInfo, right string) row {
 	return row{kind: rowTrack, label: trackTitle(t.Artist, t.Title), right: right, track: &t}
 }
 
-func (m *model) queueRows(tracks []ipc.TrackInfo) []row {
+// playlistTracks are an open playlist's rows. Live rows are cliamp's own
+// playlist: play-next tracks are tagged +N (their place in line) in cyan, and
+// markCurrent keeps the » on the one playing.
+func playlistTracks(tracks []ipc.TrackInfo, live bool) []row {
 	rows := make([]row, 0, len(tracks))
 	for i, t := range tracks {
 		r := trackRow(t, durationText(t.DurationSecs))
-		r.index = i
-		r.current = m.snap != nil && m.snap.Index == i
+		r.index, r.live = i, live
+		if live && t.QueuePosition > 0 {
+			r.right = strings.TrimSpace("+" + strconv.Itoa(t.QueuePosition) + " " + r.right)
+			r.color = cCyan
+		}
 		rows = append(rows, r)
 	}
 	return rows

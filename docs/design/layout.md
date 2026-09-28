@@ -69,10 +69,23 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
   on a tint 30% toward the theme accent; the sources panel's active tab takes the same tint only while it has focus. The open EQ belongs to player focus:
   it takes the keys (and the highlight) while the player has focus, and tab leaves it open.
 - Player: `↑↓` volume ±2 dB, `←→` seek ±5 s (also `,` `.` from anywhere).
-- Sources: tabs `sources | queue | history` (`[` `]` or click a tab). `↑↓`/wheel move (skipping headers); `→`/`l` opens a source or country, `←`/`h` goes back a level (esc too) — Radio lists pinned entries then countries (most stations first, ties alphabetical), a country lists its stations with bitrate in the dim right column; Enter plays now (replaces
-  queue; `track.play`); `a` append to the end of the live playlist (`queue`, by path); `A` play next
-  (`track.queue` for a supplied track, `queue.enqueue` for one already in the live playlist). Checked against
-  `cliamp remote capabilities` on v2.0.1, 2026-09-26.
+- Sources: tabs `sources | history` (`[` `]` or click a tab). The sources tab is one hierarchy: providers →
+  playlists → a playlist's tracks. `↑↓`/wheel move (skipping headers); `→`/`l` opens a source, country or
+  playlist, `←`/`h` goes back a level (esc too) with the row it came from selected — Radio lists pinned entries
+  then countries (most stations first, ties alphabetical), a country lists its stations with bitrate in the dim
+  right column. A station (`l:` `c:` `f:` `s:` IDs) has no tracks: `→` does nothing, Enter plays it.
+- Enter on a playlist loads it (`provider.load`, plays from the top) and goes inside. The header reads
+  `provider › playlist`. Inside a playlist cliamp has not loaded, rows are `provider.tracks` (every page); Enter on
+  a track loads the playlist, finds the track in the live playlist by path and `queue.play`s it (the same path as
+  resume). Inside the loaded one (`snapshot.playlist == provider:id`) rows are cliamp's live playlist
+  (`queue.list`, every page, refetched when `playlist_revision` changes): `»` marks `snapshot.index`, moved on
+  every state poll; play-next tracks show `+N` in cyan; Enter is `queue.play`. The selection follows the playing
+  track until moved by hand.
+- The top of the providers level has `now playing › name` whenever something is loaded: it opens the loaded
+  playlist, or, for a lone track, search result or station, a `now playing` level of the live playlist.
+- Elsewhere (search results, history) Enter plays now (replaces queue; `track.play`); `a` append to the end of
+  the live playlist (`queue`, by path); `A` play next (`track.queue` for a supplied track, `queue.enqueue` for a
+  live-playlist row). Checked against `cliamp remote capabilities` on v2.0.1, 2026-09-26.
 - Enter on a row spins a braille throbber in its marker column (`pendingRow`) until it lands: a source's list
   arrives, or cliamp reports the playlist/track playing with position > 0. A failed op or `pendingTimeout` stops it.
 - `/` searches the current source; at the top level it searches all configured sources, results grouped by source.
@@ -105,13 +118,15 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
 
 ## Persistence (deck-owned; cliamp's daemon does not save EQ)
 - `~/.config/cliamp-deck/state.toml`: EQ (preset name + 10 bands), last visualizer, and where the sources list was
-  left (open provider, radio country, selected row). On attach, reapply the EQ and reopen that provider/country.
+  left (open provider, radio country, open playlist, selected row). On attach, reapply the EQ and reopen that
+  provider/country/playlist; `source_playlist` is absent from older files and reads as none. Resuming a provider
+  playlist opens the list inside it, on the playing track.
   Saved on opening a provider or country, going back, and quitting; not overwritten before the restore lands.
 - Also the last thing playing (`last_track`, cliamp's TrackInfo as JSON, stream title and queue position dropped),
   saved whenever the playing path changes. On attach, if cliamp is neither playing nor paused, the deck sends
   `track.play` with it, so the last station starts again (added 2026-09-26).
 - Also the visual sync delay (`sync_ms`), saved on every `{` / `}`.
-- Not remembered: queue/history tab, takeover, EQ panel open.
+- Not remembered: history tab, the now-playing level, takeover, EQ panel open.
 
 ## Deferred / upstream candidates
 - cliamp daemon saving EQ like its TUI does (then drop deck-side EQ persistence).

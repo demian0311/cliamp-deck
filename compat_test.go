@@ -175,6 +175,9 @@ func TestResumeReloadsThePlaylist(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("nothing resumed")
 	}
+	if m.provider != "spotify" || m.playlist != "pl1" || m.playlistName != "Road Trip" {
+		t.Errorf("sources not inside the resumed playlist: %q › %q", m.provider, m.playlist)
+	}
 	if msg := cmd().(opMsg); msg.err != nil || msg.label != "playing Five" {
 		t.Fatalf("reply: %#v", msg)
 	}
@@ -187,5 +190,53 @@ func TestResumeReloadsThePlaylist(t *testing.T) {
 	m.rememberPlaylist("", "", "") // a lone track was started since
 	if s := loadState(path); s.LastPlaylist != "" || s.LastProvider != "" {
 		t.Fatalf("playlist still remembered: %+v", s)
+	}
+}
+
+// Enter on a track of a playlist cliamp has not loaded loads the playlist,
+// then plays that track in it.
+func TestEnterOnATrackLoadsItsPlaylist(t *testing.T) {
+	var ops []string
+	var loaded, played any
+	var mu sync.Mutex
+	sock := fakeCliamp(t, func(req map[string]any) string {
+		mu.Lock()
+		defer mu.Unlock()
+		op, _ := req["operation"].(string)
+		ops = append(ops, op)
+		reply := map[string]any{"version": 2, "id": req["id"], "ok": true}
+		switch op {
+		case "provider.load":
+			loaded = req["params"]
+		case "queue.list":
+			var tracks []map[string]any
+			for i := range 3 {
+				tracks = append(tracks, map[string]any{"path": fmt.Sprintf("t%d", i), "index": i})
+			}
+			reply["result"] = map[string]any{"tracks": tracks, "total": 3}
+		case "queue.play":
+			played = req["params"].(map[string]any)["index"]
+		}
+		b, _ := json.Marshal(reply)
+		return string(b)
+	})
+	m := spotifyModel(t)
+	m.c = client{sock: sock}
+	m = key(m, "right") // Road Trip, not the loaded playlist
+	m = upd(m, tracksMsg{key: m.rowsKey, tracks: []ipc.TrackInfo{{Path: "t0"}, {Path: "t1"}, {Path: "t2", Title: "Two"}}})
+	m = key(key(m, "down"), "down")
+	next, cmd := m.key("enter")
+	m = next.(model)
+	if cmd == nil || m.saved.LastPlaylist != "pl1" {
+		t.Fatalf("nothing sent, remembered %q", m.saved.LastPlaylist)
+	}
+	if msg := cmd().(opMsg); msg.err != nil || msg.label != "playing Two" {
+		t.Fatalf("reply: %#v", msg)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	params, _ := loaded.(map[string]any)
+	if strings.Join(ops, " ") != "provider.load queue.list queue.play" || params["playlist"] != "pl1" || played != float64(2) {
+		t.Fatalf("ops %v, loaded %v, played index %v", ops, loaded, played)
 	}
 }

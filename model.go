@@ -92,7 +92,14 @@ type model struct {
 	providers    []ipc.ProviderInfo
 	provider     string // open provider key in the sources tab; "" = top level
 	providerName string
+	playlist     string // the playlist open inside provider; "" = its list of playlists
+	playlistName string
+	nowPlaying   bool               // the now-playing level: cliamp's live playlist, no provider open
 	stations     []ipc.PlaylistInfo // the open provider's list, as loaded so far
+	stationsOf   string             // the provider stations belongs to
+	reselect     string             // the playlist to select once the provider's list reloads
+	rowsKey      string             // the fetch an open playlist's rows come from (rowsWant)
+	follow       bool               // an open playlist's selection follows the playing track until moved
 	inCountry    bool               // a radio country is open; country is which
 	country      string
 	tab          int
@@ -103,7 +110,6 @@ type model struct {
 	loading      bool
 	lastClick    time.Time
 	lastClickRow int
-	queueRev     uint64
 	catalog      bool // the open provider is a paged catalog with more to load
 
 	statePath string
@@ -237,11 +243,105 @@ func (m *model) rememberSource() {
 		return // the remembered place hasn't been reached yet; keep it
 	}
 	m.saved.Source, m.saved.SourceInCountry, m.saved.SourceCountry = m.provider, m.inCountry, m.country
-	m.saved.SourceSelected = ""
-	if l := m.lists[tabSources]; l.sel < len(l.rows) && !m.inResults {
+	m.saved.SourcePlaylist, m.saved.SourcePlaylistName = m.playlist, m.playlistName
+	m.saved.SourceSelected = m.playlist
+	if l := m.lists[tabSources]; l.sel < len(l.rows) && !m.inResults && !m.inPlaylist() {
 		m.saved.SourceSelected = l.rows[l.sel].key
 	}
 	m.persist()
+}
+
+// inPlaylist is true while the sources tab is inside a playlist or the
+// now-playing level, listing tracks.
+func (m *model) inPlaylist() bool { return m.playlist != "" || m.nowPlaying }
+
+// liveOpen is true when the open playlist's rows are cliamp's live playlist:
+// the now-playing level, or the provider playlist cliamp has loaded.
+func (m *model) liveOpen() bool {
+	return m.snap != nil && (m.nowPlaying || (m.playlist != "" && m.snap.Playlist == m.provider+":"+m.playlist))
+}
+
+// openPlaylist goes inside a provider playlist. Its rows arrive with the next
+// refreshRows.
+func (m *model) openPlaylist(provider, name, playlist, playlistName string) {
+	m.provider, m.providerName, m.playlist, m.playlistName = provider, name, playlist, playlistName
+	m.nowPlaying = false
+	m.enterLevel()
+}
+
+// openNowPlaying lists cliamp's live playlist when what it has loaded is not
+// a provider playlist (a lone track, search result or station).
+func (m *model) openNowPlaying() {
+	m.provider, m.providerName, m.playlist, m.playlistName = "", "", "", ""
+	m.nowPlaying = true
+	m.enterLevel()
+}
+
+func (m *model) enterLevel() {
+	m.inCountry, m.inResults = false, false
+	m.restorePending, m.restoring = false, false // this is where the list now is
+	m.lists[tabSources] = listState{}
+	m.rowsKey, m.follow, m.loading = "", true, true
+	m.rememberSource()
+}
+
+// rowsWant names the fetch an open playlist's rows should come from: cliamp's
+// live playlist at its current revision once it is the one loaded, else the
+// provider's own track list.
+func (m *model) rowsWant() string {
+	at := m.provider + ":" + m.playlist
+	if m.liveOpen() {
+		return fmt.Sprintf("%s queue@%d", at, m.snap.PlaylistRevision)
+	}
+	return at + " tracks"
+}
+
+// refreshRows fetches the open playlist's rows unless they already come from
+// the fetch rowsWant names. It is how the list follows cliamp: a new playlist
+// revision, or the open playlist becoming the loaded one.
+func (m *model) refreshRows() tea.Cmd {
+	key := m.rowsWant()
+	if key == m.rowsKey {
+		return nil
+	}
+	m.rowsKey = key
+	c, live := m.c, m.liveOpen()
+	params := map[string]any{"provider": m.provider, "playlist": m.playlist}
+	return func() tea.Msg {
+		if live {
+			t, err := allTracks(c, "queue.list", nil)
+			return tracksMsg{key: key, tracks: t, live: true, err: err}
+		}
+		t, err := allTracks(c, "provider.tracks", params)
+		return tracksMsg{key: key, tracks: t, err: err}
+	}
+}
+
+// markCurrent puts the » on the live row cliamp is playing, as tracks
+// advance, and the selection with it while it follows.
+func (m *model) markCurrent() {
+	l := &m.lists[tabSources]
+	for i := range l.rows {
+		r := &l.rows[i]
+		if !r.live {
+			continue
+		}
+		r.current = m.snap != nil && m.snap.Index == r.index
+		if r.current && m.follow {
+			l.sel = i
+		}
+	}
+}
+
+// providerNamed is a provider's display name, or its key until the list of
+// providers arrives.
+func (m *model) providerNamed(key string) string {
+	for _, p := range m.providers {
+		if p.Key == key {
+			return p.Name
+		}
+	}
+	return ""
 }
 
 func (m *model) persist() {
@@ -294,7 +394,10 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.providers = msg.list
-		if m.provider == "" && !m.inResults {
+		if m.provider != "" && m.providerName == "" { // opened by resume before the names came
+			m.providerName = m.providerNamed(m.provider)
+		}
+		if m.provider == "" && !m.inResults && !m.nowPlaying {
 			m.lists[tabSources].rows = m.topRows()
 			if m.restorePending {
 				m.restorePending = false
@@ -308,6 +411,9 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case playlistsMsg:
+		if m.inPlaylist() { // a restore overtaken by resume, or a late page
+			return m, nil
+		}
 		m.loading = false
 		if m.pending != nil && m.pending.key == msg.provider {
 			m.pending = nil
@@ -325,14 +431,18 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.provider, m.providerName, m.inResults = msg.provider, msg.name, false
 		m.catalog = msg.catalog && msg.added > 0
-		m.stations = msg.list
+		m.stations, m.stationsOf = msg.list, msg.provider
 		if !msg.keepSel {
 			m.inCountry = false
 		}
+		if m.reselect != "" {
+			selKey, m.reselect = m.reselect, ""
+		}
+		playlist := ""
 		if m.restoring {
 			m.restoring = false
 			m.inCountry, m.country = m.saved.SourceInCountry, m.saved.SourceCountry
-			selKey = m.saved.SourceSelected
+			selKey, playlist = m.saved.SourceSelected, m.saved.SourcePlaylist
 		}
 		rows := m.playlistRows(msg.provider, msg.list)
 		if m.inCountry && len(rows) == 0 { // the remembered country is gone
@@ -347,16 +457,37 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.lists[tabSources] = listState{rows: rows, sel: sel}
 		m.lists[tabSources].move(0)
+		if playlist != "" && !isStation(playlist) { // reopen inside the playlist left open
+			m.openPlaylist(msg.provider, msg.name, playlist, m.saved.SourcePlaylistName)
+			return m, m.refreshRows()
+		}
 		m.rememberSource()
 
-	case queueMsg:
+	case tracksMsg:
+		if msg.key != m.rowsKey || !m.inPlaylist() || m.inResults {
+			return m, nil // superseded, or the playlist was left
+		}
+		m.loading = false
 		if msg.err != nil {
-			m.say("queue: " + msg.err.Error())
+			m.say("tracks: " + msg.err.Error())
 			return m, nil
 		}
-		sel := m.lists[tabQueue].sel
-		m.lists[tabQueue] = listState{rows: m.queueRows(msg.tracks), sel: sel}
-		m.lists[tabQueue].move(0)
+		// The selection stays on its track as the rows change under it, e.g.
+		// from the playlist's own tracks to cliamp's once it loads.
+		path := ""
+		if l := m.lists[tabSources]; l.sel < len(l.rows) && l.rows[l.sel].track != nil {
+			path = l.rows[l.sel].track.Path
+		}
+		rows := playlistTracks(msg.tracks, msg.live)
+		sel := 0
+		for i, r := range rows {
+			if r.track.Path == path {
+				sel = i
+				break
+			}
+		}
+		m.lists[tabSources] = listState{rows: rows, sel: sel}
+		m.markCurrent()
 
 	case historyMsg:
 		if msg.err != nil {
@@ -516,13 +647,25 @@ func (m model) onState(msg stateMsg) (tea.Model, tea.Cmd) {
 	m.rememberShuffle()
 	m.rememberTrack()
 	m.rememberPosition(false)
-	if m.tab == tabQueue && m.snap.PlaylistRevision != m.queueRev {
-		m.queueRev = m.snap.PlaylistRevision
-		cmds = append(cmds, fetchQueue(m.c))
+	if m.inPlaylist() && !m.inResults {
+		if c := m.refreshRows(); c != nil {
+			cmds = append(cmds, c)
+		}
+		m.markCurrent()
 	}
-	if m.tab == tabSources && m.provider == "" && !m.inResults {
-		sel := m.lists[tabSources].sel
-		m.lists[tabSources] = listState{rows: m.topRows(), sel: sel}
+	if m.tab == tabSources && m.provider == "" && !m.inResults && !m.nowPlaying {
+		// The now-playing row comes and goes; the selection keeps its row.
+		l := m.lists[tabSources]
+		rows, sel := m.topRows(), l.sel
+		if l.sel < len(l.rows) {
+			was := l.rows[l.sel]
+			for i, r := range rows {
+				if r.kind == was.kind && r.key == was.key && r.label == was.label {
+					sel = i
+				}
+			}
+		}
+		m.lists[tabSources] = listState{rows: rows, sel: sel}
 		m.lists[tabSources].move(0)
 	}
 	return m, tea.Batch(cmds...)
@@ -540,7 +683,9 @@ func (m *model) resume() tea.Cmd {
 	s, c := m.saved, m.c
 	if s.LastPlaylist != "" {
 		m.say("resuming " + cmp.Or(s.LastPlaylistName, label) + "…")
-		return resumePlaylist(c, s.LastProvider, s.LastPlaylist, t.Path, label, s.LastPosition)
+		// The list lands inside the playlist, on the track as it plays.
+		m.openPlaylist(s.LastProvider, m.providerNamed(s.LastProvider), s.LastPlaylist, s.LastPlaylistName)
+		return playInPlaylist(c, s.LastProvider, s.LastPlaylist, t.Path, label, s.LastPosition)
 	}
 	m.say("resuming " + label + "…")
 	return func() tea.Msg {
@@ -552,15 +697,16 @@ func (m *model) resume() tea.Cmd {
 	}
 }
 
-// resumePlaylist reloads a provider playlist and moves to the track that was
-// playing, so next, previous and shuffle carry on through the playlist. A big
-// playlist arrives in pages after the load returns, so the track is looked
-// for until resumeWait runs out; if it never turns up the playlist just plays
-// from the top.
-func resumePlaylist(c client, provider, playlist, path, label string, pos float64) tea.Cmd {
+// playInPlaylist loads a provider playlist and moves to one of its tracks, pos
+// seconds in, so next, previous and shuffle carry on through the playlist:
+// resume, and Enter on a track of a playlist not yet loaded. A big playlist
+// arrives in pages after the load returns, so the track is looked for until
+// resumeWait runs out; if it never turns up the playlist just plays from the
+// top.
+func playInPlaylist(c client, provider, playlist, path, label string, pos float64) tea.Cmd {
 	return func() tea.Msg {
 		if _, err := c.op("provider.load", map[string]string{"provider": provider, "playlist": playlist}); err != nil {
-			return opMsg{label: "resume", err: err}
+			return opMsg{label: "load", err: err}
 		}
 		for deadline := time.Now().Add(resumeWait); ; time.Sleep(resumePoll) {
 			if i, ok := queueIndex(c, path); ok {
@@ -632,23 +778,18 @@ func (m *model) rememberPosition(force bool) {
 	m.persist()
 }
 
-// queueIndex finds a track in cliamp's live playlist by path, a page at a time.
+// queueIndex finds a track in cliamp's live playlist by path.
 func queueIndex(c client, path string) (int, bool) {
-	const page = 200
-	for off := 0; ; off += page {
-		r, err := c.response("queue.list", map[string]int{"offset": off, "limit": page})
-		if err != nil {
-			return 0, false
-		}
-		for _, t := range r.Tracks {
-			if t.Path == path {
-				return t.Index, true
-			}
-		}
-		if len(r.Tracks) < page {
-			return 0, false
+	tracks, err := allTracks(c, "queue.list", nil)
+	if err != nil {
+		return 0, false
+	}
+	for i, t := range tracks {
+		if t.Path == path {
+			return i, true
 		}
 	}
+	return 0, false
 }
 
 // rememberPlaylist records the provider playlist being started, or clears it
