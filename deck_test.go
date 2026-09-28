@@ -601,9 +601,9 @@ func TestSelTintsTowardAccent(t *testing.T) {
 }
 
 // The deck opens on spectrum, unless the saved state names a visualizer that
-// is still in the cycle.
+// is still in the cycle, whether it comes before spectrum in the cycle or after.
 func TestDefaultVisualizerIsSpectrum(t *testing.T) {
-	for saved, want := range map[string]string{"": "spectrum", "tunnel": "spectrum", "aurora": "aurora"} {
+	for saved, want := range map[string]string{"": "spectrum", "tunnel": "spectrum", "aurora": "aurora", "fire": "fire", "plasma": "plasma"} {
 		path := filepath.Join(t.TempDir(), "state.toml")
 		if saved != "" {
 			if err := saveState(path, deckState{Visualizer: saved}); err != nil {

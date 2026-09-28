@@ -140,11 +140,12 @@ func newModel(c client, themePath, statePath string) model {
 		focus: focusVis, statePath: statePath, lastClickRow: -1}
 	m.saved = loadState(statePath)
 	m.restorePending = m.saved.Source != ""
+	restored := false
 	for i, name := range m.modeNames() {
-		if name == "spectrum" { // the default, until a saved name that still exists overrides it
-			m.mode = i
-		}
 		if name == m.saved.Visualizer {
+			m.mode, restored = i, true
+		}
+		if name == "spectrum" && !restored { // the default, unless a saved name that still exists overrides it
 			m.mode = i
 		}
 	}
