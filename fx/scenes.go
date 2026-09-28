@@ -20,12 +20,14 @@ func sceneSky(f *Frame, th *Theme, hor, flash float64) RGB {
 	return haze
 }
 
-// Aurora: curtains of light over three mountain ranges. The ranges drift
-// past at different speeds, the far one slowest, so the land has depth; the
-// curtains hang in the sky behind them. Each stretch of curtain burns as
-// bright as its band, bass on the left; bass lifts the curtains and quickens
+// Aurora: bands of curtain light over three mountain ranges. One to four
+// bands hang in the sky, more as the music gets louder; each stretch of a
+// band burns as bright as its part of the spectrum, bass on the left. The
+// ranges drift past at different speeds, the far one slowest, so the land
+// has depth. Stars twinkle through dim and bright, each following one band
+// and cycling faster with the treble. Bass lifts the curtains and quickens
 // the drift, mids set their sway, and a beat flares the whole sky.
-type Aurora struct{ pan float64 }
+type Aurora struct{ pan, bands, twinkle float64 }
 
 func (*Aurora) Name() string { return "aurora" }
 
@@ -35,35 +37,53 @@ const auroraDrift = 3.0
 
 var auroraDepth = [3]float64{0.2, 0.5, 1}
 
+const auroraMaxBands = 4
+
 func (e *Aurora) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	W, H := float64(f.W), float64(f.H)
+	energy := (a.Bass + a.Mid + a.Treble) / 3
+	if e.bands == 0 {
+		e.bands = 1
+	}
+	e.bands += (1 + (auroraMaxBands-1)*energy - e.bands) * math.Min(1, dt*1.2) // eased, so bands fade in and out
 	e.pan += dt * auroraDrift * (1 + 1.5*a.Bass)
+	e.twinkle += dt * (0.8 + 3*a.Treble)
 	low := lerp(th.Stage, th.Color("blue"), 0.15)
 	for y := range f.H {
 		c := lerp(th.Stage, low, float64(y)/H)
 		for x := range f.W {
 			f.Px[y*f.W+x] = c
 			if !th.Light && hash2(int64(x), int64(y)) > 0.985 { // stars, on a dark sky only
-				f.Px[y*f.W+x] = lerp(c, th.Bright, 0.3+0.4*math.Abs(math.Sin(t*1.5+float64(x))))
+				X, Y := int64(x), int64(y)
+				cycle := 0.5 + 0.5*math.Sin(e.twinkle*(0.6+hash2(Y, X))+hash2(X+7, Y)*2*math.Pi)
+				f.Px[y*f.W+x] = lerp(c, th.Bright, 0.05+0.85*cycle*(0.3+0.7*bandAt(a, hash2(X, Y+3))))
 			}
 		}
 	}
 
 	curtain := th.Gradient("green", "cyan", "magenta")
-	for x := range f.W {
-		fx := float64(x)
-		yc := H*0.5 + math.Sin(fx*0.07+t*0.5)*H*0.08 + math.Sin(fx*0.19-t*(0.8+a.Mid))*H*0.04
-		in := (0.2+0.8*fbm(fx*0.04+t*0.25, t*0.15))*(0.25+0.75*bandAt(a, fx/W)) + 0.35*a.Beat
-		span := H * (0.18 + 0.22*in + 0.15*a.Bass)
-		for y := max(0, int(yc-span)); y < min(f.H, int(yc+3)); y++ {
-			up := (yc - float64(y)) / span
-			k := clamp01(1 - up)
-			if float64(y) > yc {
-				k = clamp01(1 - (float64(y)-yc)/3)
+	for k := range auroraMaxBands {
+		w := clamp01(e.bands - float64(k))
+		if w == 0 {
+			continue
+		}
+		kf := float64(k)
+		for x := range f.W {
+			fx := float64(x)
+			yc := H*(0.2+0.11*kf) + math.Sin(fx*0.07*(1+0.3*kf)+t*0.5+kf*1.7)*H*0.07 + math.Sin(fx*0.19-t*(0.8+a.Mid)+kf)*H*0.03
+			patch := 0.3 + 0.7*fbm(fx*0.03+kf*13+t*0.1, kf*5) // each band thins and thickens along its length
+			in := w * patch * ((0.2+0.8*fbm(fx*0.04+t*0.25, t*0.15+kf*3))*(0.25+0.75*bandAt(a, fx/W)) + 0.35*a.Beat)
+			span := H * (0.07 + 0.1*in + 0.06*a.Bass) // short, so stacked bands stay apart
+			for y := max(0, int(yc-span)); y < min(f.H, int(yc+3)); y++ {
+				up := (yc - float64(y)) / span
+				v := clamp01(1 - up)
+				if float64(y) > yc {
+					v = clamp01(1 - (float64(y)-yc)/3)
+				}
+				v *= in * (0.6 + 0.4*vnoise(fx*0.5, t*3+float64(y)*0.1))
+				i := y*f.W + x
+				f.Px[i] = lerp(f.Px[i], curtain.At(clamp01(up*0.6+kf*0.25)), clamp01(v*1.8))
 			}
-			k *= in * (0.6 + 0.4*vnoise(fx*0.5, t*3+float64(y)*0.1))
-			i := y*f.W + x
-			f.Px[i] = lerp(f.Px[i], curtain.At(up), clamp01(k*1.3))
 		}
 	}
 
@@ -104,7 +124,7 @@ func (*Skyline) Name() string { return "skyline" }
 
 const (
 	skylineFar    = 28.0 // world units to the last block drawn
-	skylineCam    = 2.6  // camera height; the tallest towers reach 2.5
+	skylineCam    = 4.0  // camera height, well above the tallest towers (2.5), so the view looks down on the city
 	skylineStreet = 0.22 // share of each block that is street
 	skylineFloors = 7.0  // floors per world unit of height
 	skylineDetail = 14.0 // windows are drawn one by one nearer than this
@@ -119,7 +139,7 @@ func skylineHeight(wx, wz float64) (h float64, cx, cz int64) {
 		return 0, cx, cz
 	}
 	r := hash2(cx, cz)
-	return 0.3 + 2.2*r*r, cx, cz
+	return 0.3 + 2.2*r*r*r, cx, cz // cubed: mostly low blocks, a few towers
 }
 
 func (e *Skyline) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
@@ -146,8 +166,8 @@ func (e *Skyline) draw(f *Frame, a Audio, dt float64, th *Theme) {
 	}
 	W, H := float64(f.W), float64(f.H)
 	e.z += dt * (0.5 + 1.2*a.Bass)
-	hor := H * 0.18
-	scale := H * 0.6
+	hor := H * 0.12
+	scale := H * 0.45
 	haze := sceneSky(f, th, hor, 0)
 
 	blue := th.Color("blue")
@@ -162,7 +182,7 @@ func (e *Skyline) draw(f *Frame, a Audio, dt float64, th *Theme) {
 	for x := range e.top {
 		e.top[x], e.lastH[x] = f.H, 0
 	}
-	for d := 0.8; d < skylineFar; d += 0.06 + d*0.02 {
+	for d := 1.5; d < skylineFar; d += 0.06 + d*0.02 {
 		fog := d / skylineFar
 		wz := e.z + d
 		for x := range f.W {

@@ -22,13 +22,14 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
 - One cycle, `fx.Stock()` in order: plasma → fire → metaballs → ridges → spectrum → timescope → vortex →
   water → synaesthesia → scope → fountain → aurora → skyline → coral → flow → life → moire → braille. Saved names no
   longer in the cycle fall back to the first.
-  2026-09-27: tunnel removed. Aurora (curtains over three low parallax ranges) and skyline (a slow voxel flyover
-  of a city whose windows follow random bands, drawn at 2× and averaged down to soften the column-march stair
-  steps) are in `fx/scenes.go`. Terrain (a voxel mountain flyover) was added and removed the same day: it did not
+  2026-09-27: tunnel removed. Aurora (one to four curtain bands by loudness over three low parallax ranges,
+  stars twinkling per band) and skyline (a slow, high voxel flyover of a city whose windows follow random bands,
+  drawn at 2× and averaged down to soften the column-march stair steps) are in `fx/scenes.go`. Terrain (a voxel mountain flyover) was added and removed the same day: it did not
   read.
   Coral (Gray–Scott), flow (particle field), life (Conway) and moire (two ring sets in theme hues) are in
   `fx/growth.go`. Picked from a browser mockup; radar was dropped there.
-  Braille (a full pane of braille whose dot density follows the bands, theme hues drifting through it) is a
+  Braille (a full pane of braille whose dot density follows the bands, lit in 4×4 ordered-dither order so
+  density never clumps, theme hues drifting through it) is a
   `fx.GlyphEffect` in `fx/growth.go`.
   2026-09-26: the braille spectrum was removed, then aurora, ripples, rain and warp were replaced by Winamp-era
   effects — vortex (Geiss/MilkDrop feedback), water (AVS Water Bump), fountain (AVS Dot Fountain), spectrum

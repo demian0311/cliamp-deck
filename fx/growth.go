@@ -284,6 +284,15 @@ type Braille struct {
 
 func (*Braille) Name() string { return "braille" }
 
+// bayer4 is the 4×4 ordered-dither matrix as thresholds in 0..1: lighting
+// dots in this order keeps any density evenly spread.
+var bayer4 = [4][4]float64{
+	{0.5 / 16, 8.5 / 16, 2.5 / 16, 10.5 / 16},
+	{12.5 / 16, 4.5 / 16, 14.5 / 16, 6.5 / 16},
+	{3.5 / 16, 11.5 / 16, 1.5 / 16, 9.5 / 16},
+	{15.5 / 16, 7.5 / 16, 13.5 / 16, 5.5 / 16},
+}
+
 const brailleFloor = 0.45 // share of dots lit in silence, so the page never thins to patches
 
 func (e *Braille) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
@@ -306,7 +315,7 @@ func (e *Braille) RenderCells(c *Cells, a Audio, t, dt float64, th *Theme) {
 					x, y := float64(cx*2+s), float64(cy*4+r)
 					v := math.Sqrt(bandAt(a, x/W)) * (0.8 + 0.4*fbm(x*0.04-e.drift, y*0.05+e.drift*0.5))
 					v = brailleFloor + (1-brailleFloor)*clamp01(v)
-					if hash2(int64(x), int64(y)) < v {
+					if bayer4[r][(cx*2+s)%4] < v { // ordered, so dots spread evenly instead of clumping
 						ch |= bits[r][s]
 					}
 					level += v / 8
