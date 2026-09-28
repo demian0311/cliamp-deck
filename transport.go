@@ -1,6 +1,9 @@
 package main
 
-import "os"
+import (
+	"os"
+	"time"
+)
 
 // glyphSet is how the transport controls are drawn.
 type glyphSet struct{ prev, play, pause, stop, next string }
@@ -41,27 +44,25 @@ type button struct {
 // hit is the clickable area: the glyph plus a column either side.
 func (b button) hit() rect { return rect{b.at.x - 1, b.at.y, b.at.w + 2, 1} }
 
-// transport lays out the controls on the player's bottom row. Only the
-// control matching the playback state is lit: play green, pause yellow, stop
-// red. A stream has nothing to skip through, and a narrow player keeps only
-// play, pause and stop.
+// transport lays out the controls on the player's bottom row. Play, pause and
+// stop are one button that shows the state and toggles it: a green play,
+// blinking while playing, or a red pause while paused or stopped. On a stream
+// cliamp's unpause is a stop and reconnect, so pause and stop were the same.
+// A stream has nothing to skip through, and a narrow player keeps only the one
+// button.
 func (m model) transport(player rect) []button {
 	ix, iw, iy, ih := player.x+2, player.w-4, player.y+1, player.h-2
 	if iw < 4 || ih < 4 {
 		return nil
 	}
-	st := m.snap.State
-	lit := func(on bool, c cls) cls {
-		if on {
-			return c
+	state := button{glyph: glyphs.pause, op: "toggle", colour: cRed}
+	if m.snap.State == "playing" {
+		state.glyph, state.colour = glyphs.play, cGreen
+		if time.Now().UnixMilli()/600%2 == 1 { // the LIVE dot's beat
+			state.colour = cDim
 		}
-		return cDim
 	}
-	bs := []button{
-		{glyph: glyphs.play, op: "play", colour: lit(st == "playing", cGreen)},
-		{glyph: glyphs.pause, op: "pause", colour: lit(st == "paused", cYellow)},
-		{glyph: glyphs.stop, op: "stop", label: "stopped", colour: lit(st != "playing" && st != "paused", cRed)},
-	}
+	bs := []button{state}
 	if !m.live() && iw >= 30 {
 		bs = append([]button{{glyph: glyphs.prev, op: "prev", label: "previous", colour: cWhite}}, bs...)
 		bs = append(bs, button{glyph: glyphs.next, op: "next", label: "next", colour: cWhite})

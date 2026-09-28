@@ -662,8 +662,8 @@ func TestNarrowListCollapsesTabs(t *testing.T) {
 	}
 }
 
-// Each transport control is drawn where it is clicked, sends its own
-// operation, and only the one matching the playback state is lit.
+// Each transport control is drawn where it is clicked and sends its own
+// operation; the middle one shows the playback state and toggles it.
 func TestTransportButtons(t *testing.T) {
 	m := testModel(t)
 	m.h = 40 // tall enough for the transport row
@@ -683,16 +683,21 @@ func TestTransportButtons(t *testing.T) {
 			t.Errorf("clicking %s left focus at %d", b.op, next.(model).focus)
 		}
 	}
-	if strings.Join(ops, " ") != "prev play pause stop next" {
+	if strings.Join(ops, " ") != "prev toggle next" {
 		t.Fatalf("controls: %v", ops)
 	}
-	lit := map[string]string{"playing": "play", "paused": "pause", "stopped": "stop"}
-	for state, want := range lit {
-		m.snap.State = state
-		for _, b := range m.transport(l.player) {
-			if on := b.colour != cDim && b.colour != cWhite; on != (b.op == want) {
-				t.Errorf("%s: %s lit=%v", state, b.op, on)
-			}
+	for _, c := range []struct {
+		state, glyph string
+		colours      []cls
+	}{
+		{"playing", glyphs.play, []cls{cGreen, cDim}}, // blinks
+		{"paused", glyphs.pause, []cls{cRed}},
+		{"stopped", glyphs.pause, []cls{cRed}},
+	} {
+		m.snap.State = c.state
+		b := m.transport(l.player)[1]
+		if b.glyph != c.glyph || !slices.Contains(c.colours, b.colour) {
+			t.Errorf("%s: drew %q in %v", c.state, b.glyph, b.colour)
 		}
 	}
 }

@@ -19,7 +19,7 @@ theme's colours. All audio, providers and the spectrum come from a running cliam
 <td>
 
 1. **Player**: what's playing and from which station, live or elapsed time, the level meters and volume, and
-   the play/pause/stop controls.
+   one play/pause button that shows the state: a blinking green play while playing, a red pause otherwise.
 2. **EQ**: ten bands with cliamp's presets. `e` opens and closes it from anywhere; it is hidden until you want it.
 3. **Visualizer**: `v` or the `‹ n/N ›` arrows cycle the effects; click it or press Enter to take over the whole
    terminal. Spectrum, the default, stays as short as the player and stands in for its level meter, leaving the
