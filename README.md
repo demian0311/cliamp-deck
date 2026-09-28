@@ -5,6 +5,49 @@
 </p>
 <p align="center"><sub>Player, EQ, visualizer and playlist stacked in one narrow window, the way Winamp sat on a 2000s desktop.</sub></p>
 
+## Install (Omarchy)
+
+cliamp ships with Omarchy, so all you need is the deck. One line installs it to `~/.local/bin` and adds it to the
+app launcher (Super + Space) with cliamp's icon. No sudo, nothing to compile:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/demian0311/cliamp-deck/master/install.sh | bash
+```
+
+Run the same line again to update. To remove it and its launcher entry:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/demian0311/cliamp-deck/master/install.sh | bash -s -- --uninstall
+```
+
+The script downloads the release binary for your CPU and checks it against the release's `SHA256SUMS`; read
+[`install.sh`](install.sh) first if you prefer.
+
+**Or as a pacman package** (x86_64), so `omarchy update` keeps it current. One line adds the signed
+`[cliamp-deck]` repository and installs it:
+
+```sh
+curl -LO https://github.com/demian0311/cliamp-deck/releases/download/arch-repo/cliamp-deck-keyring.pkg.tar.zst &&
+  sudo pacman -U ./cliamp-deck-keyring.pkg.tar.zst && sudo pacman -Sy cliamp-deck
+```
+
+**Elsewhere, or from source** — needs Go; on Omarchy `mise use -g go@latest` provides it:
+
+```sh
+GOBIN=~/.local/bin go install github.com/demian0311/cliamp-deck@latest
+```
+
+Any Linux with cliamp v2.0.1 or newer and a truecolor terminal works. On start the deck asks the running cliamp
+which remote operations it supports, and exits with an update hint if any it uses are missing.
+
+```sh
+cliamp-deck                                   # starts `cliamp --daemon` if nothing is running
+cliamp-deck --spawn=false --socket PATH       # attach to a specific instance only
+cliamp-deck --icons plain                     # plain player icons, for a terminal font without Nerd Font glyphs
+```
+
+## About
+
 Alternative terminal UI for [cliamp](https://github.com/bjarneo/cliamp): a btop-style grid and a Winamp-style
 player that re-flow with the terminal, plus a stage of audio-reactive demoscene effects painted in your Omarchy
 theme's colours. All audio, providers and the spectrum come from a running cliamp over its V2 IPC socket.
@@ -59,47 +102,6 @@ and a visualizer alongside:
 | Light themes work too: the EQ open, vortex drawn as ink on paper. | A small terminal stacks the panels; spectrum stays as short as the player. |
 
 Screenshots in Omarchy's Slate Dark and Slate Light themes, playing a cliamp radio stream.
-
-## Install (Omarchy)
-
-cliamp ships with Omarchy, so all you need is the deck. One line installs it to `~/.local/bin` and adds it to the
-app launcher (Super + Space) with cliamp's icon. No sudo, nothing to compile:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/demian0311/cliamp-deck/master/install.sh | bash
-```
-
-Run the same line again to update. To remove it and its launcher entry:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/demian0311/cliamp-deck/master/install.sh | bash -s -- --uninstall
-```
-
-The script downloads the release binary for your CPU and checks it against the release's `SHA256SUMS`; read
-[`install.sh`](install.sh) first if you prefer.
-
-**Or as a pacman package** (x86_64), so `omarchy update` keeps it current. One line adds the signed
-`[cliamp-deck]` repository and installs it:
-
-```sh
-curl -LO https://github.com/demian0311/cliamp-deck/releases/download/arch-repo/cliamp-deck-keyring.pkg.tar.zst &&
-  sudo pacman -U ./cliamp-deck-keyring.pkg.tar.zst && sudo pacman -Sy cliamp-deck
-```
-
-**Elsewhere, or from source** — needs Go; on Omarchy `mise use -g go@latest` provides it:
-
-```sh
-GOBIN=~/.local/bin go install github.com/demian0311/cliamp-deck@latest
-```
-
-Any Linux with cliamp v2.0.1 or newer and a truecolor terminal works. On start the deck asks the running cliamp
-which remote operations it supports, and exits with an update hint if any it uses are missing.
-
-```sh
-cliamp-deck                                   # starts `cliamp --daemon` if nothing is running
-cliamp-deck --spawn=false --socket PATH       # attach to a specific instance only
-cliamp-deck --icons plain                     # plain player icons, for a terminal font without Nerd Font glyphs
-```
 
 ## Using it
 

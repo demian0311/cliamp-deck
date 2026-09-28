@@ -74,6 +74,9 @@ def parse(path):
                 for ch in tok:
                     fg, bg = st['fg'] or FG, st['bg'] or BG
                     if st['rev']: fg, bg = bg, fg
+                    if ch == '\t':  # tmux 3.5+ keeps the tabs a renderer skips blank cells with
+                        cells.extend([(' ', fg, bg, False)] * (8 - len(cells) % 8))
+                        continue
                     cells.append((ch, fg, bg, st['bold']))
         rows.append(cells)
     while rows and not rows[-1]: rows.pop()
