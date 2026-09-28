@@ -163,6 +163,12 @@ func (m model) common(k string) (tea.Model, tea.Cmd) {
 		return m, m.run("previous", "prev", nil)
 	case "s":
 		return m, m.run("stopped", "stop", nil)
+	case "z": // cliamp's own shuffle key
+		label := "shuffle on"
+		if m.snap != nil && m.snap.Shuffle != nil && *m.snap.Shuffle {
+			label = "shuffle off"
+		}
+		return m, m.run(label, "shuffle", map[string]string{"name": "toggle"})
 	case "+", "=":
 		return m, m.run("", "volume.adjust", map[string]float64{"value": 2})
 	case "-", "_":

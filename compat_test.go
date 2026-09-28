@@ -97,3 +97,32 @@ func TestQuitStopsPlayback(t *testing.T) {
 		t.Fatalf("operations sent: %v", ops)
 	}
 }
+
+func TestZTogglesShuffle(t *testing.T) {
+	var got []map[string]any
+	var mu sync.Mutex
+	sock := fakeCliamp(t, func(req map[string]any) string {
+		mu.Lock()
+		got = append(got, req)
+		mu.Unlock()
+		b, _ := json.Marshal(map[string]any{"version": 2, "id": req["id"], "ok": true})
+		return string(b)
+	})
+	m := testModel(t)
+	m.c = client{sock: sock}
+	_, cmd := m.key("z")
+	if cmd == nil {
+		t.Fatal("z sent nothing")
+	}
+	if msg, ok := cmd().(opMsg); !ok || msg.err != nil || msg.label != "shuffle on" {
+		t.Fatalf("reply: %#v", msg)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 1 || got[0]["operation"] != "shuffle" {
+		t.Fatalf("requests: %v", got)
+	}
+	if params, _ := got[0]["params"].(map[string]any); params["name"] != "toggle" {
+		t.Fatalf("params: %v", got[0]["params"])
+	}
+}

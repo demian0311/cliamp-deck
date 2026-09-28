@@ -501,7 +501,7 @@ func (m model) hints() [][2]string {
 	if m.live() {
 		return [][2]string{{"␣", "play"}, {"↑↓", "vol"}, {"e", "eq"}, {"v", "visual"}, {"tab", "focus"}, {"q", "quit"}}
 	}
-	return [][2]string{{"␣", "play"}, {"↑↓", "vol"}, {"←→", "seek"}, {"e", "eq"}, {"n/p", "skip"}, {"v", "visual"}, {"tab", "focus"}, {"q", "quit"}}
+	return [][2]string{{"␣", "play"}, {"↑↓", "vol"}, {"←→", "seek"}, {"e", "eq"}, {"n/p", "skip"}, {"z", "shuffle"}, {"v", "visual"}, {"tab", "focus"}, {"q", "quit"}}
 }
 
 func (m model) trackText() (title, source string) {

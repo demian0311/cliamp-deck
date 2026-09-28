@@ -14,7 +14,7 @@ import (
 // them would leave keys or the sources panel silently dead, so refuse to
 // start instead and say what to update.
 var requiredOps = []string{
-	"toggle", "next", "prev", "stop", "seek", "volume.adjust",
+	"toggle", "next", "prev", "stop", "seek", "volume.adjust", "shuffle",
 	"provider.list", "provider.playlists", "provider.load",
 }
 
