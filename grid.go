@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"charm.land/lipgloss/v2"
 
@@ -92,6 +93,9 @@ func (g *grid) put(x, y int, s string, c cls) {
 		return
 	}
 	for _, r := range s {
+		if unicode.IsControl(r) { // a tab in a station name would move the terminal's cursor
+			r = ' '
+		}
 		if x >= 0 && x < g.w {
 			g.ch[y*g.w+x] = r
 			g.cl[y*g.w+x] = c

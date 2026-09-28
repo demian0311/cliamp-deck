@@ -996,3 +996,13 @@ func TestTrackRowTitleFirst(t *testing.T) {
 		t.Errorf("artistless row painted %v", at(x, y))
 	}
 }
+
+// A control character in a title (some radio stations carry tabs) is drawn as
+// a space, so the terminal's cursor stays on the grid.
+func TestGridPutBlanksControlCharacters(t *testing.T) {
+	g := newGrid(12, 1)
+	g.put(0, 0, "Boogie\t\t1k\r", 0)
+	if got := string(g.ch); got != "Boogie  1k  " {
+		t.Errorf("row %q", got)
+	}
+}
