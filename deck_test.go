@@ -598,3 +598,20 @@ func TestSelTintsTowardAccent(t *testing.T) {
 		t.Errorf("tint %v, want %v", got, want)
 	}
 }
+
+// The deck opens on spectrum, unless the saved state names a visualizer that
+// is still in the cycle.
+func TestDefaultVisualizerIsSpectrum(t *testing.T) {
+	for saved, want := range map[string]string{"": "spectrum", "tunnel": "spectrum", "aurora": "aurora"} {
+		path := filepath.Join(t.TempDir(), "state.toml")
+		if saved != "" {
+			if err := saveState(path, deckState{Visualizer: saved}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		m := newModel(client{sock: "/nonexistent"}, "/nonexistent/colors.toml", path)
+		if got := m.modeName(); got != want {
+			t.Errorf("saved %q: opened on %q, want %q", saved, got, want)
+		}
+	}
+}

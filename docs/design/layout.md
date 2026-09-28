@@ -20,8 +20,8 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
 
 ## Visualizer
 - One cycle, `fx.Stock()` in order: plasma → fire → metaballs → ridges → spectrum → timescope → vortex →
-  water → synaesthesia → scope → fountain → aurora → skyline → coral → flow → life → moire → braille. Saved names no
-  longer in the cycle fall back to the first.
+  water → synaesthesia → scope → fountain → aurora → skyline → coral → flow → life → moire → braille. The deck opens on
+  spectrum unless state.toml names a visualizer still in the cycle (2026-09-27; before, it opened on the first).
   2026-09-27: tunnel removed. Aurora (one to four curtain bands by loudness over three low parallax ranges,
   stars twinkling per band) and skyline (a slow, high voxel flyover of a city whose windows follow random bands,
   drawn at 2× and averaged down to soften the column-march stair steps) are in `fx/scenes.go`. Terrain (a voxel mountain flyover) was added and removed the same day: it did not

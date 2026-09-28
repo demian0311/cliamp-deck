@@ -27,7 +27,11 @@ func sceneSky(f *Frame, th *Theme, hor, flash float64) RGB {
 // has depth. Stars twinkle through dim and bright, each following one band
 // and cycling faster with the treble. Bass lifts the curtains and quickens
 // the drift, mids set their sway, and a beat flares the whole sky.
-type Aurora struct{ pan, bands, twinkle float64 }
+type Aurora struct {
+	pan, bands, twinkle float64
+	sway, level, swell  float64   // curtain phase; eased loudness and beat
+	glow                []float64 // eased band level under each column
+}
 
 func (*Aurora) Name() string { return "aurora" }
 
@@ -48,6 +52,20 @@ func (e *Aurora) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 	e.bands += (1 + (auroraMaxBands-1)*energy - e.bands) * math.Min(1, dt*1.2) // eased, so bands fade in and out
 	e.pan += dt * auroraDrift * (1 + 1.5*a.Bass)
 	e.twinkle += dt * (0.8 + 3*a.Treble)
+	// The curtains ease toward the music rather than jumping with it: a
+	// quarter second for the bands, a little longer for loudness, and a beat
+	// swells and fades over about half a second. Sway is a phase that
+	// accumulates, so a change in the mids changes its speed, not its place.
+	ease := func(v *float64, to, rate float64) { *v += (to - *v) * math.Min(1, dt*rate) }
+	if len(e.glow) != f.W {
+		e.glow = make([]float64, f.W)
+	}
+	for x := range e.glow {
+		ease(&e.glow[x], bandAt(a, float64(x)/W), 4)
+	}
+	ease(&e.level, energy, 3)
+	e.swell = math.Max(e.swell*math.Exp(-dt*2), a.Beat)
+	e.sway += dt * (0.3 + 0.6*a.Mid)
 	low := lerp(th.Stage, th.Color("blue"), 0.15)
 	for y := range f.H {
 		c := lerp(th.Stage, low, float64(y)/H)
@@ -70,17 +88,17 @@ func (e *Aurora) Render(f *Frame, a Audio, t, dt float64, th *Theme) {
 		kf := float64(k)
 		for x := range f.W {
 			fx := float64(x)
-			yc := H*(0.2+0.11*kf) + math.Sin(fx*0.07*(1+0.3*kf)+t*0.5+kf*1.7)*H*0.07 + math.Sin(fx*0.19-t*(0.8+a.Mid)+kf)*H*0.03
-			patch := 0.3 + 0.7*fbm(fx*0.03+kf*13+t*0.1, kf*5) // each band thins and thickens along its length
-			in := w * patch * ((0.2+0.8*fbm(fx*0.04+t*0.25, t*0.15+kf*3))*(0.25+0.75*bandAt(a, fx/W)) + 0.35*a.Beat)
-			span := H * (0.07 + 0.1*in + 0.06*a.Bass) // short, so stacked bands stay apart
+			yc := H*(0.2+0.11*kf) + math.Sin(fx*0.07*(1+0.3*kf)+e.sway*0.6+kf*1.7)*H*0.07 + math.Sin(fx*0.19-e.sway+kf)*H*0.03
+			patch := 0.3 + 0.7*fbm(fx*0.03+kf*13+t*0.05, kf*5) // each band thins and thickens along its length
+			in := w * patch * ((0.3+0.7*fbm(fx*0.04+t*0.08, t*0.05+kf*3))*(0.15+0.85*e.glow[x])*(0.5+0.5*e.level) + 0.3*e.swell)
+			span := H * (0.07 + 0.1*in + 0.06*e.level) // short, so stacked bands stay apart
 			for y := max(0, int(yc-span)); y < min(f.H, int(yc+3)); y++ {
 				up := (yc - float64(y)) / span
 				v := clamp01(1 - up)
 				if float64(y) > yc {
 					v = clamp01(1 - (float64(y)-yc)/3)
 				}
-				v *= in * (0.6 + 0.4*vnoise(fx*0.5, t*3+float64(y)*0.1))
+				v *= in * (0.6 + 0.4*vnoise(fx*0.5, t*0.6+float64(y)*0.1))
 				i := y*f.W + x
 				f.Px[i] = lerp(f.Px[i], curtain.At(clamp01(up*0.6+kf*0.25)), clamp01(v*1.8))
 			}

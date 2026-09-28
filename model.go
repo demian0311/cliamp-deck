@@ -130,6 +130,9 @@ func newModel(c client, themePath, statePath string) model {
 	m.saved = loadState(statePath)
 	m.restorePending = m.saved.Source != ""
 	for i, name := range m.modeNames() {
+		if name == "spectrum" { // the default, until a saved name that still exists overrides it
+			m.mode = i
+		}
 		if name == m.saved.Visualizer {
 			m.mode = i
 		}
