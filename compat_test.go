@@ -3,11 +3,14 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/bjarneo/cliamp/ipc"
 )
 
 // fakeCliamp answers every request line on a Unix socket with reply(request).
@@ -124,5 +127,57 @@ func TestZTogglesShuffle(t *testing.T) {
 	}
 	if params, _ := got[0]["params"].(map[string]any); params["name"] != "toggle" {
 		t.Fatalf("params: %v", got[0]["params"])
+	}
+}
+
+// A deck restarted after playing from a provider playlist reloads that
+// playlist and moves to the track it was on, rather than playing it alone.
+func TestResumeReloadsThePlaylist(t *testing.T) {
+	var ops []string
+	var played any
+	var mu sync.Mutex
+	sock := fakeCliamp(t, func(req map[string]any) string {
+		mu.Lock()
+		defer mu.Unlock()
+		op, _ := req["operation"].(string)
+		ops = append(ops, op)
+		reply := map[string]any{"version": 2, "id": req["id"], "ok": true}
+		switch op {
+		case "queue.list":
+			var tracks []map[string]any
+			for i := range 8 {
+				tracks = append(tracks, map[string]any{"path": fmt.Sprintf("spotify:track:%d", i), "index": i})
+			}
+			reply["result"] = map[string]any{"tracks": tracks}
+		case "queue.play":
+			played = req["params"].(map[string]any)["index"]
+		}
+		b, _ := json.Marshal(reply)
+		return string(b)
+	})
+	path := filepath.Join(t.TempDir(), "state.toml")
+	m := newModel(client{sock: sock}, "/nonexistent/colors.toml", path)
+	m.rememberPlaylist("spotify", "pl1", "Road Trip")
+	m.saved.LastTrack = &ipc.TrackInfo{Path: "spotify:track:5", Title: "Five"}
+	m.persist()
+
+	m = newModel(client{sock: sock}, "/nonexistent/colors.toml", path)
+	m.snap = &ipc.RuntimeSnapshot{State: "stopped"}
+	cmd := m.resume()
+	if cmd == nil {
+		t.Fatal("nothing resumed")
+	}
+	if msg := cmd().(opMsg); msg.err != nil || msg.label != "playing Five" {
+		t.Fatalf("reply: %#v", msg)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if strings.Join(ops, " ") != "provider.load queue.list queue.play" || played != float64(5) {
+		t.Fatalf("ops %v, played index %v", ops, played)
+	}
+
+	m.rememberPlaylist("", "", "") // a lone track was started since
+	if s := loadState(path); s.LastPlaylist != "" || s.LastProvider != "" {
+		t.Fatalf("playlist still remembered: %+v", s)
 	}
 }

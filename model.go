@@ -526,8 +526,69 @@ func (m *model) resume() tea.Cmd {
 		return nil
 	}
 	label := cmp.Or(t.Station, t.Title, t.Path)
+	if s := m.saved; s.LastPlaylist != "" {
+		m.say("resuming " + cmp.Or(s.LastPlaylistName, label) + "…")
+		return resumePlaylist(m.c, s.LastProvider, s.LastPlaylist, t.Path, label)
+	}
 	m.say("resuming " + label + "…")
 	return m.run("playing "+label, "track.play", map[string]*ipc.TrackInfo{"track": t})
+}
+
+// resumePlaylist reloads a provider playlist and moves to the track that was
+// playing, so next, previous and shuffle carry on through the playlist. A big
+// playlist arrives in pages after the load returns, so the track is looked
+// for until resumeWait runs out; if it never turns up the playlist just plays
+// from the top.
+func resumePlaylist(c client, provider, playlist, path, label string) tea.Cmd {
+	return func() tea.Msg {
+		if _, err := c.op("provider.load", map[string]string{"provider": provider, "playlist": playlist}); err != nil {
+			return opMsg{label: "resume", err: err}
+		}
+		for deadline := time.Now().Add(resumeWait); ; time.Sleep(resumePoll) {
+			if i, ok := queueIndex(c, path); ok {
+				_, err := c.op("queue.play", map[string]int{"index": i})
+				return opMsg{label: "playing " + label, err: err}
+			}
+			if time.Now().After(deadline) {
+				return opMsg{label: "playing from the top"}
+			}
+		}
+	}
+}
+
+const (
+	resumeWait = 10 * time.Second
+	resumePoll = 500 * time.Millisecond
+)
+
+// queueIndex finds a track in cliamp's live playlist by path, a page at a time.
+func queueIndex(c client, path string) (int, bool) {
+	const page = 200
+	for off := 0; ; off += page {
+		r, err := c.response("queue.list", map[string]int{"offset": off, "limit": page})
+		if err != nil {
+			return 0, false
+		}
+		for _, t := range r.Tracks {
+			if t.Path == path {
+				return t.Index, true
+			}
+		}
+		if len(r.Tracks) < page {
+			return 0, false
+		}
+	}
+}
+
+// rememberPlaylist records the provider playlist being started, or clears it
+// (empty provider) when a single track or station is.
+func (m *model) rememberPlaylist(provider, playlist, name string) {
+	s := &m.saved
+	if s.LastProvider == provider && s.LastPlaylist == playlist {
+		return
+	}
+	s.LastProvider, s.LastPlaylist, s.LastPlaylistName = provider, playlist, name
+	m.persist()
 }
 
 // rememberTrack saves what is playing whenever it changes, for resume. A

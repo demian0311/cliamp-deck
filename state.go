@@ -31,6 +31,11 @@ type deckState struct {
 	// cliamp. Stored as JSON, since cliamp's track.play takes the TrackInfo.
 	LastTrack *ipc.TrackInfo
 
+	// LastProvider and LastPlaylist name the provider playlist LastTrack was
+	// playing from, so resume reloads the whole playlist rather than the one
+	// track. Empty when the last thing started was a single track or station.
+	LastProvider, LastPlaylist, LastPlaylistName string
+
 	// SyncMs is how long the deck holds each spectrum frame before drawing
 	// it, so the picture lands with the sound (see syncDefaultMs).
 	SyncMs int
@@ -84,6 +89,12 @@ func loadState(path string) deckState {
 			s.SourceInCountry = v == "true"
 		case "source_selected":
 			s.SourceSelected = unquote(v)
+		case "last_provider":
+			s.LastProvider = unquote(v)
+		case "last_playlist":
+			s.LastPlaylist = unquote(v)
+		case "last_playlist_name":
+			s.LastPlaylistName = unquote(v)
 		case "sync_ms":
 			if n, err := strconv.Atoi(v); err == nil {
 				s.SyncMs = max(0, min(n, syncMaxMs))
@@ -118,9 +129,11 @@ func saveState(path string, s deckState) error {
 		last = string(b)
 	}
 	body := fmt.Sprintf("# cliamp-deck state, rewritten by the deck\nvisualizer = %q\neq_preset = %q\neq_bands = [%s]\n"+
-		"source = %q\nsource_country = %q\nsource_in_country = %t\nsource_selected = %q\nlast_track = %q\nsync_ms = %d\n",
+		"source = %q\nsource_country = %q\nsource_in_country = %t\nsource_selected = %q\nlast_track = %q\n"+
+		"last_provider = %q\nlast_playlist = %q\nlast_playlist_name = %q\nsync_ms = %d\n",
 		s.Visualizer, s.EQPreset, strings.Join(bands, ", "),
-		s.Source, s.SourceCountry, s.SourceInCountry, s.SourceSelected, last, s.SyncMs)
+		s.Source, s.SourceCountry, s.SourceInCountry, s.SourceSelected, last,
+		s.LastProvider, s.LastPlaylist, s.LastPlaylistName, s.SyncMs)
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(body), 0o644); err != nil {
 		return err

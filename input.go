@@ -267,12 +267,14 @@ func (m model) activate() (tea.Model, tea.Cmd) {
 	case rowPlaylist:
 		m.pending = &pendingRow{tab: m.tab, key: r.key, playlist: r.provider + ":" + r.key, since: time.Now()}
 		m.say("loading " + r.label + "…")
+		m.rememberPlaylist(r.provider, r.key, r.label)
 		return m, m.run("playing "+r.label, "provider.load", map[string]string{"provider": r.provider, "playlist": r.key})
 	case rowTrack:
 		m.pending = &pendingRow{tab: m.tab, path: r.track.Path, since: time.Now()}
 		if m.tab == tabQueue {
 			return m, m.run("playing "+r.label, "queue.play", map[string]int{"index": r.index})
 		}
+		m.rememberPlaylist("", "", "") // a lone track or station: resume plays just it
 		return m, m.run("playing "+r.label, "track.play", map[string]*ipc.TrackInfo{"track": r.track})
 	case rowSetup:
 		return m.connect(r)
