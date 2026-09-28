@@ -148,8 +148,16 @@ func (m model) drawPlayer(g *grid, r rect) {
 	if iw > 34 && ih >= 2 {
 		meterW = min(24, iw/4)
 		meterX = ix + iw - meterW
-		m.drawMeter(g, meterX, iy, meterW)
 		mw = meterW + 1
+	}
+	volTop := m.spectrumShown() && meterW > 0 // the spectrum panel is the meter; volume takes its place
+	switch {
+	case volTop:
+		g.put(meterX-4, iy, "vol", cDim)
+		m.drawVolume(g, meterX, iy, meterW, m.snap.Volume)
+		mw += 4
+	case meterW > 0:
+		m.drawMeter(g, meterX, iy, meterW)
 	}
 	m.drawTitleLine(g, ix, iy, iw-mw)
 	if ih >= 2 {
@@ -160,7 +168,11 @@ func (m model) drawPlayer(g *grid, r rect) {
 				parts = append(parts, p)
 			}
 		}
-		g.put(ix+2, iy+1, fit(strings.Join(parts, " · "), iw-2-mw), cCyan)
+		sw := iw - 2 - mw
+		if volTop {
+			sw = iw - 2 // no meter beside it
+		}
+		g.put(ix+2, iy+1, fit(strings.Join(parts, " · "), sw), cCyan)
 	}
 	if ih >= 3 {
 		m.drawTimeLine(g, ix, iy+2, iw)
@@ -172,7 +184,7 @@ func (m model) drawPlayer(g *grid, r rect) {
 			transport = "►  ‖  ■"
 		}
 		g.put(ix, iy+3, transport, cWhite)
-		if meterW > 0 { // under the meter, the same width, so the two line up
+		if meterW > 0 && !volTop { // under the meter, the same width, so the two line up
 			g.put(meterX-4, iy+3, "vol", cDim)
 			m.drawVolume(g, meterX, iy+3, meterW, m.snap.Volume)
 		}

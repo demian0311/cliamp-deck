@@ -200,7 +200,13 @@ func (m model) run(label, op string, params any) tea.Cmd {
 
 func (m *model) say(s string) { m.note, m.noteAt = s, time.Now() }
 
-func (m model) ls() layoutState { return layoutState{take: m.take, eqOpen: m.eqOpen, focus: m.focus} }
+func (m model) ls() layoutState {
+	return layoutState{take: m.take, eqOpen: m.eqOpen, focus: m.focus, compact: m.spectrumShown()}
+}
+
+// spectrumShown is true while spectrum is the visualizer: it is drawn small,
+// and the player swaps its own level meter for the volume.
+func (m model) spectrumShown() bool { return len(m.effects) > 0 && m.modeName() == "spectrum" }
 
 func (m model) modeNames() []string {
 	var names []string

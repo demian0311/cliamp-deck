@@ -500,7 +500,7 @@ func TestLoadingRowThrobs(t *testing.T) {
 func TestPanelsEaseToNewSizes(t *testing.T) {
 	m := testModel(t)
 	m.w, m.h = 100, 40
-	m.focus = focusVis
+	m.focus, m.mode = focusVis, 0 // a full-size visualizer; spectrum keeps its size
 	m = upd(m, tea.WindowSizeMsg{Width: 100, Height: 40})
 	before := m.layout().sources.h
 	m = upd(m, tea.KeyPressMsg{Code: tea.KeyTab}) // visualizer → sources
@@ -613,5 +613,28 @@ func TestDefaultVisualizerIsSpectrum(t *testing.T) {
 		if got := m.modeName(); got != want {
 			t.Errorf("saved %q: opened on %q, want %q", saved, got, want)
 		}
+	}
+}
+
+// While spectrum shows, the visualizer is the player's height whatever has
+// focus, stacked or side by side, and the list takes the rest.
+func TestSpectrumStaysPlayerHeight(t *testing.T) {
+	for _, sz := range [][2]int{{100, 40}, {100, 28}, {200, 58}, {280, 58}} {
+		for _, st := range []layoutState{{compact: true}, {compact: true, focus: focusSources}, {compact: true, eqOpen: true}} {
+			l := computeLayout(sz[0], sz[1], st)
+			if l.vis.h != l.player.h {
+				t.Errorf("%v %+v: visualizer %d rows, player %d", sz, st, l.vis.h, l.player.h)
+			}
+			if l.sources.y+l.sources.h != sz[1]-1 {
+				t.Errorf("%v %+v: sources end at %d, want %d", sz, st, l.sources.y+l.sources.h, sz[1]-1)
+			}
+		}
+	}
+	m := testModel(t)
+	if !m.spectrumShown() || !m.ls().compact {
+		t.Fatalf("opened on %q, compact %v", m.modeName(), m.ls().compact)
+	}
+	if m = key(m, "v"); m.ls().compact {
+		t.Errorf("%s is still drawn small", m.modeName())
 	}
 }

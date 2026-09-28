@@ -17,6 +17,11 @@ quarter ≈100×28, small split 60×24; LG ultrawide ≈280×58.
   the visualizer.
 - Remaining rows split 60/40 visualizer/sources. While sources has focus, visualizer drops to 25% (min 3 rows)
   and reverts when focus leaves. Sources minimum 8 rows (5 when rows < 30).
+- Spectrum is drawn small (2026-09-27): while it is the visualizer, the visualizer is the player's height whatever
+  has focus, and the list takes the rest; an open EQ comes out of the list. Side-by-side, player and spectrum share
+  the top row and EQ and sources run full width below. The player drops its own level meter (the spectrum panel is
+  the meter) and shows the volume bar in its place on the title row, so volume shows even with a 5-row player.
+  Takeover still fills the terminal. `layoutState.compact` carries it, so cycling in or out eases like focus does.
 
 ## Visualizer
 - One cycle, `fx.Stock()` in order: plasma → fire → metaballs → ridges → spectrum → timescope → vortex →

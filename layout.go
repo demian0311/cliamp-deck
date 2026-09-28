@@ -46,6 +46,7 @@ type layout struct {
 type layoutState struct {
 	take, eqOpen bool
 	focus        focusArea
+	compact      bool // spectrum is showing: the visualizer keeps to the player's height
 }
 
 const (
@@ -78,6 +79,14 @@ func computeLayout(w, h int, s layoutState) layout {
 		l.shape = shapeSide
 		lw := min(sideMaxL, w*40/100)
 		ph, eh := panelHeights(h, s.eqOpen)
+		if s.compact { // player and spectrum share the top row; EQ and sources run full width below
+			l.player, l.vis = rect{0, 0, lw, ph}, rect{lw, 0, w - lw, ph}
+			if eh > 0 {
+				l.eq = rect{0, ph, w, eh}
+			}
+			l.sources = rect{0, ph + eh, w, max(0, body-ph-eh)}
+			break
+		}
 		l.player = rect{0, 0, lw, ph}
 		if eh > 0 {
 			l.eq = rect{0, ph, lw, eh}
@@ -94,6 +103,15 @@ func computeLayout(w, h int, s layoutState) layout {
 		// Split as if the EQ were closed, then take the EQ's rows from the
 		// visualizer, so opening the EQ never shortens the list.
 		avail := max(0, body-ph)
+		if s.compact { // spectrum stays the player's height; the EQ comes out of the list
+			vh := min(ph, max(0, avail-eh))
+			l.player, l.vis = rect{0, 0, w, ph}, rect{0, ph + eh, w, vh}
+			if eh > 0 {
+				l.eq = rect{0, ph, w, eh}
+			}
+			l.sources = rect{0, ph + eh + vh, w, max(0, avail-eh-vh)}
+			break
+		}
 		vh := int(float64(avail)*0.6 + 0.5)
 		if s.focus == focusSources {
 			vh = max(3, int(float64(avail)*0.25+0.5)) // the list grows while it has focus
