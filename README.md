@@ -133,6 +133,6 @@ Known limits (2026-09-26):
 
 Screenshots are real captures: a second `cliamp --daemon` (own `CLIAMP_CONFIG_DIR`, `--audio-device` a PipeWire
 null sink, so nothing is heard) plays a radio stream, the deck runs in a private tmux server
-(`tmux -L shots`, `terminal-features '*:RGB'`) with `TMUX` unset and `COLORTERM=truecolor` — otherwise it detects
-tmux and falls back to 256 colours — and `tmux capture-pane -e` dumps each frame. `docs/screenshots/ansi2png.py`
+(`tmux -L shots`, `terminal-features '*:RGB'`) with `TMUX` unset, `TERM=xterm-256color` and `COLORTERM=truecolor` — otherwise it
+detects tmux and falls back to 256 colours — and `tmux capture-pane -e` dumps each frame. `docs/screenshots/ansi2png.py`
 renders it with a theme's terminal palette (`THEME_DIR=<omarchy theme dir>`, default the applied theme).
